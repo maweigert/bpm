@@ -2,7 +2,8 @@
 import os
 import sys
 import time
-
+import numpy  as np
+                
 class StopWatch(object):
     """ stops time in miliseconds
 
@@ -45,17 +46,44 @@ def absPath(myPath):
         base_path = os.path.abspath(os.path.dirname(__file__))
         return os.path.join(base_path, myPath)
 
+def pad_to_shape(h,dshape, mode = "constant"):
+    if h.shape == dshape:
+        return h
 
+    diff = np.array(dshape)- np.array(h.shape)
+    #first shrink
+    slices  = [slice(-x/2,x/2) if x<0 else slice(None,None) for x in diff]
+    res = h[slices]
+    #then padd
+    return np.pad(res,[(d/2,d-d/2) if d>0 else (0,0) for d in diff],mode=mode)
 
+def _is_power2(n):
+    return _next_power_of_2(n) == n
+
+def _next_power_of_2(n):
+    return int(2**np.ceil(np.log2(n)))
+
+def pad_to_power2(data, axis = None,mode="constant"):
+    """pads shape to power of two
+    if axis is None all axis are padded, otherwise just
+    the ones given e.g axis=[0,2]
+    """
+    if axis is None:
+        axis = range(data.ndim)
+    if np.all([_is_power2(n) for n in np.array(data.shape)[axis]]):
+        return data
+    else:
+        newShape = [_next_power_of_2(n) if i in axis else n for i,n in enumerate(data.shape)]
+        return pad_to_shape(data,newShape,mode)
 
 if __name__ == '__main__':
 
-    s = StopWatch()
-
-    s.tic()
-
-    time.sleep(1.)
-    print "time passed:", s.toc()
 
 
     print "absPath: ", absPath(".") 
+
+    d = np.ones((1,7,12))
+
+    d2 = pad_to_power2(d,axis=[0,1])
+
+    print d2.shape
