@@ -87,20 +87,28 @@ def bpm_3d_spheres_split(size, units, NZsplit = 1,lam = .5, u0 = None,
 
     u = np.empty((Nz,Ny,Nx),np.complex64)
     u_part = np.empty((Nz2,Ny,Nx),np.complex64)
+   
+    dn = np.empty((Nz,Ny,Nx),np.float32)
+    dn_part = np.empty((Nz2,Ny,Nx),np.float32)
 
     u_part[-1,...] = u0
+    ps = np.array(points).copy()
     
     for i in range(NZsplit):
         i1,i2 = i*Nz2, np.clip((i+1)*Nz2,0,Nz)
         # print u_part[-1,...]
-        u_part, _ = bpm_3d_spheres((Nx,Ny,i2-i1+1),units = units,lam = lam,u0 = u_part[-1,...],
-                                   points = points,
+        u_part, dn_part = bpm_3d_spheres((Nx,Ny,i2-i1+1),units = units,lam = lam,u0 = u_part[-1,...],
+                                   points = ps,
                                    dn_inner = dn_inner, rad_inner = rad_inner,                    
                                    dn_outer = dn_outer, rad_outer = rad_outer)
 
-        u[i1:i2,...] = u_part[1:,...]
+        # shift points to correct position
+        ps[:,-1] -= Nz2*units[-1]
 
-    return u
+        u[i1:i2,...] = u_part[1:,...]
+        dn[i1:i2,...] = dn_part[1:,...]
+
+    return u, dn
 
 
 
@@ -117,13 +125,30 @@ def test_3d_spheres():
                            points = points)
 
 if __name__ == '__main__':
-    Nx, Nz = 512,512
-    dx, dz = .05, 0.05
+    Nx, Nz = 1024,1024
+    Nx, Nz = 2048,1024
+
+    #Nx, Nz = 512,512
+    #Nx, Nz = 256,256
+    Lx = 400
+    Lz = 400
+
+    dx, dz = .1, 0.2
+  
+    dx, dz = 1.*Lx/Nx, 1.*Lz/Nz
 
     lam = .5
 
-    points =  [[dx*Nx/2.,dx*Nx/2.,13.]]
-    
-    u = bpm_3d_spheres_split((Nx,Nx,Nz),(dx,dx,dz),
-                                   NZsplit = 4,
+    #points =  [[dx*Nx/2.,dx*Nx/2.,13.]]
+
+    Np = 1000
+    x = dx*np.random.uniform(.1*Nx,.9*Nx,Np)
+    y = dx*np.random.uniform(.1*Nx,.9*Nx,Np)
+    z = dz*np.random.uniform(0.3*Nz,.7*Nz,Np)
+    points = np.array([x,y,z]).T
+
+    #points =  [[dx*Nx/2.,dx*Nx/2.,dz*Nz/2.]]
+
+    u,dn = bpm_3d_spheres_split((Nx,Nx,Nz),(dx,dx,dz),
+                                   NZsplit = 16,
                            points = points)
