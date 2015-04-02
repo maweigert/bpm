@@ -83,7 +83,6 @@ def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
 
     isComplexDn = dn_g.dtype.type in (np.complex64,np.complex128)
 
-    print isComplexDn
         
     if return_scattering:
         scatter_weights = np.fft.fftshift(np.real(H0)*
@@ -142,9 +141,41 @@ def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
         return u_g.get(), dn_g.get()
 
 
-def bpm_3d_free(size, units, dz, lam = .5, u0 = None,
+def bpm_3d_split(size, units, NZsplit = 1, lam = .5, u0 = None, dn = None,           
+           return_scattering = False,
            use_fresnel_approx = False):
     """
+    same as bpm_3d but splits z into Nz peices (e.g. if memory of GPU is not enough)
+    """
+    
+    Nx, Ny, Nz = size
+
+    Nz2 = Nz/NZsplit+1
+
+    if u0 is None:
+        u0 = np.ones((Ny,Nx),np.complex64)
+
+    if dn is None:
+        dn = np.zeros((Nz,Ny,Nx),np.float32)
+    
+    u = np.empty((Nz,Ny,Nx),np.complex64)
+    u_part = np.empty((Nz2,Ny,Nx),np.complex64)
+
+    u_part[-1,...] = u0
+    
+    for i in range(NZsplit):
+        i1,i2 = i*Nz2, np.clip((i+1)*Nz2,0,Nz)
+        # print u_part[-1,...]
+        u_part, _ = bpm_3d((Nx,Ny,i2-i1+1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2+1,:,:])
+
+        # u_part, _ = bpm_3d((Nx,Ny,Nz2),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[zslice,:,:])
+        u[i1:i2,...] = u_part[1:,...]
+
+    return u
+    
+def bpm_3d_free(size, units, dz, lam = .5, u0 = None,
+           use_fresnel_approx = False):
+    """propagates the field u0 to distance dz
     """
     clock = StopWatch()
 
@@ -204,8 +235,8 @@ def bpm_3d_free(size, units, dz, lam = .5, u0 = None,
 
     return plane_g.get()
     
-if __name__ == '__main__':
 
+def test_3d():                        
     Nx, Nz = 128,128
     dx, dz = .05, 0.05
 
@@ -223,4 +254,17 @@ if __name__ == '__main__':
     u, dn, p = bpm_3d((Nx,Nx,Nz),(dx,dx,dz),
                       dn = dn, lam = lam,
                       return_scattering = True)
+
+
+
+if __name__ == '__main__':
+                           
+    Nx, Nz = 512,512
+    dx, dz = .05, 0.05
+
+    lam = .5
+
+    units = (dx,dx,dz)
+    
+    u = bpm_3d_split((Nx,Nx,Nz),units= units, NZsplit=4,lam = lam)
 
