@@ -43,7 +43,7 @@ def bpm_3d_spheres(size, units, lam = .5, u0 = None,
                    points = None,
                    dn_inner = 0.04, rad_inner = 3.,                   
                    dn_outer = 0.02, rad_outer = 4.,
-                   return_scattering = True,
+                   return_scattering = False,
                    use_fresnel_approx = False
 ):
     """
@@ -67,8 +67,45 @@ def bpm_3d_spheres(size, units, lam = .5, u0 = None,
                   use_fresnel_approx = use_fresnel_approx)
 
 
-if __name__ == '__main__':
+def bpm_3d_spheres_split(size, units, NZsplit = 1,lam = .5, u0 = None,
+                   points = None,
+                   dn_inner = 0.04, rad_inner = 3.,                   
+                   dn_outer = 0.02, rad_outer = 4.,
+                   return_scattering = True,
+                   use_fresnel_approx = False
+):    
+    """
+    same as bpm_3d_spheres but splits z into Nz pieces (e.g. if memory of GPU is not enough)
+    """
+    
+    Nx, Ny, Nz = size
 
+    Nz2 = Nz/NZsplit+1
+
+    if u0 is None:
+        u0 = np.ones((Ny,Nx),np.complex64)
+
+    u = np.empty((Nz,Ny,Nx),np.complex64)
+    u_part = np.empty((Nz2,Ny,Nx),np.complex64)
+
+    u_part[-1,...] = u0
+    
+    for i in range(NZsplit):
+        i1,i2 = i*Nz2, np.clip((i+1)*Nz2,0,Nz)
+        # print u_part[-1,...]
+        u_part, _ = bpm_3d_spheres((Nx,Ny,i2-i1+1),units = units,lam = lam,u0 = u_part[-1,...],
+                                   points = points,
+                                   dn_inner = dn_inner, rad_inner = rad_inner,                    
+                                   dn_outer = dn_outer, rad_outer = rad_outer)
+
+        u[i1:i2,...] = u_part[1:,...]
+
+    return u
+
+
+
+                                   
+def test_3d_spheres():
     Nx, Nz = 256,512
     dx, dz = .1, 0.1
 
@@ -79,3 +116,14 @@ if __name__ == '__main__':
     u, dn,r = bpm_3d_spheres((Nx,Nx,Nz),(dx,dx,dz),
                            points = points)
 
+if __name__ == '__main__':
+    Nx, Nz = 512,512
+    dx, dz = .05, 0.05
+
+    lam = .5
+
+    points =  [[dx*Nx/2.,dx*Nx/2.,13.]]
+    
+    u = bpm_3d_spheres_split((Nx,Nx,Nz),(dx,dx,dz),
+                                   NZsplit = 4,
+                           points = points)
