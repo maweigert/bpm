@@ -11,7 +11,7 @@ from bpm.utils import StopWatch, absPath
 
 
 
-def bpm_3d(size, units, lam = .5, u0 = None, dn = None,           
+def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
            return_scattering = False,
            use_fresnel_approx = False):
     """
@@ -145,7 +145,7 @@ def bpm_3d_split(size, units, NZsplit = 1, lam = .5, u0 = None, dn = None,
            return_scattering = False,
            use_fresnel_approx = False):
     """
-    same as bpm_3d but splits z into Nz peices (e.g. if memory of GPU is not enough)
+    same as bpm_3d but splits z into Nz pieces (e.g. if memory of GPU is not enough)
     """
     
     Nx, Ny, Nz = size
@@ -166,10 +166,13 @@ def bpm_3d_split(size, units, NZsplit = 1, lam = .5, u0 = None, dn = None,
     for i in range(NZsplit):
         i1,i2 = i*Nz2, np.clip((i+1)*Nz2,0,Nz)
         # print u_part[-1,...]
-        u_part, _ = bpm_3d((Nx,Ny,i2-i1+1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2+1,:,:])
-
-        # u_part, _ = bpm_3d((Nx,Ny,Nz2),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[zslice,:,:])
-        u[i1:i2,...] = u_part[1:,...]
+        if i<NZsplit-1:
+            u_part, _ = bpm_3d((Nx,Ny,i2-i1+1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2+1,:,:])
+            u[i1:i2,...] = u_part[1:,...]
+        else:
+            u_part, _ = bpm_3d((Nx,Ny,i2-i1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2,:,:])
+            u[i1:i2,...] = u_part
+            
 
     return u
     

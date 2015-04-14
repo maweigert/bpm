@@ -36,7 +36,7 @@ def test_bessel(n,x):
     x_g = OCLArray.from_array(x.astype(float32))
     res_g = OCLArray.empty_like(x.astype(float32))
     
-    p = OCLProgram(absPath("kernels/bessel.cl"))
+    p = OCLProgram(absPath("bessel.cl"))
     p.run_kernel("bessel_fill",x_g.shape,None,
                  x_g.data,res_g.data,int32(n))
 
@@ -49,7 +49,7 @@ def psf_debye(shape,units,lam,NAs, n_integration_steps = 200):
     """
     
     p = OCLProgram(absPath("psf_debye.cl"),
-                   build_options = "-D INT_STEPS=%s"%n_integration_steps)
+                   build_options = "-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps))
 
     
     Nx0, Ny0, Nz0 = shape
@@ -117,7 +117,7 @@ def psf_debye_slit(shape,units,lam,NAs, slit_xs, slit_sigmas,
     """
     
     p = OCLProgram(absPath("psf_debye.cl"),
-                   build_options = "-D INT_STEPS=%s"%n_integration_steps)
+                   build_options = "-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps))
 
     
     Nx0, Ny0, Nz0 = shape
@@ -181,6 +181,21 @@ def psf_debye_slit(shape,units,lam,NAs, slit_xs, slit_sigmas,
     return u_all, ex_all, ey_all, ez_all
 
 
+def psf_focus_u0(shape,units,zfoc,lam,NAs, n_integration_steps = 200):
+    """calculates initial plane u0 of a beam focused at zfoc
+    shape = (Nx,Ny)
+    units = (dx,dy)
+    NAs = e.g. (0,.6)
+    """
+    Nx, Ny = shape
+    dx, dy = units
+    h, ex, ey, ez = psf_debye((Nx,Ny,4),(dx,dy,zfoc/2.),
+                              lam = lam,NAs = NAs)
+    return ex[0,...].conjugate()
+
+
+
+    
 def test_debye():
     
     lam = .5
