@@ -87,8 +87,15 @@ def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
     if return_scattering:
         scatter_weights = np.fft.fftshift(np.real(H0)*
                                           np.sqrt(KX**2/dx**2+KY**2/dy**2))
+        
         scatter_weights *= scatter_weights
+
+        # scatter_weights = np.fft.fftshift(np.real(H0))
+        
         scatter_weights_g = OCLArray.from_array(scatter_weights.astype(np.float32))
+
+
+
         scatter_cross_sec_g = OCLArray.zeros(Nz,"float32")
         plain_wave_dct = Nx*Ny*np.exp(2.j*np.pi*np.arange(Nz)*dz/lam).astype(np.complex64)
 
@@ -159,6 +166,9 @@ def bpm_3d_split(size, units, NZsplit = 1, lam = .5, u0 = None, dn = None,
         dn = np.zeros((Nz,Ny,Nx),np.float32)
     
     u = np.empty((Nz,Ny,Nx),np.complex64)
+
+    p = np.empty(Nz,np.float32)
+    
     u_part = np.empty((Nz2,Ny,Nx),np.complex64)
 
     u_part[-1,...] = u0
@@ -167,14 +177,27 @@ def bpm_3d_split(size, units, NZsplit = 1, lam = .5, u0 = None, dn = None,
         i1,i2 = i*Nz2, np.clip((i+1)*Nz2,0,Nz)
         # print u_part[-1,...]
         if i<NZsplit-1:
-            u_part, _ = bpm_3d((Nx,Ny,i2-i1+1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2+1,:,:])
+            if return_scattering:
+                u_part, _, p_part = bpm_3d((Nx,Ny,i2-i1+1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2+1,:,:], return_scattering = return_scattering)
+                p[i1:i2] = p_part[1:]
+            else:
+                u_part, _= bpm_3d((Nx,Ny,i2-i1+1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2+1,:,:], return_scattering = return_scattering)
+                
             u[i1:i2,...] = u_part[1:,...]
         else:
-            u_part, _ = bpm_3d((Nx,Ny,i2-i1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2,:,:])
+            if return_scattering:
+                u_part, _, p_part = bpm_3d((Nx,Ny,i2-i1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2,:,:], return_scattering = return_scattering)
+                p[i1:i2] = p_part
+                p[i1] = p[i1-1]
+            else:
+                u_part, _ = bpm_3d((Nx,Ny,i2-i1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2,:,:], return_scattering = return_scattering)
+                
             u[i1:i2,...] = u_part
             
-
-    return u
+    if return_scattering:
+        return u, None,p
+    else:
+        return u, None
     
 def bpm_3d_free(size, units, dz, lam = .5, u0 = None,
            use_fresnel_approx = False):
@@ -262,12 +285,26 @@ def test_3d():
 
 if __name__ == '__main__':
                            
-    Nx, Nz = 512,512
+    Nx, Nz = 256,128
     dx, dz = .05, 0.05
 
     lam = .5
 
     units = (dx,dx,dz)
-    
-    u = bpm_3d_split((Nx,Nx,Nz),units= units, NZsplit=4,lam = lam)
+    rad = 2.
 
+    x = dx*np.arange(-Nx/2,Nx/2)
+    x = dx*np.arange(-Nx/2,Nx/2)
+    z = dz*np.arange(Nz)
+    Z,Y,X = np.meshgrid(z,x,x,indexing="ij")
+    R = np.sqrt(X**2+Y**2)
+    dn = ((R<2.)*(Z<.1))*100.j
+    
+    u, dn, p = bpm_3d((Nx,Nx,Nz),units= units, lam = lam,
+                      dn = dn,
+                      return_scattering = True )
+
+    u0 = u[1,...]
+    # u = bpm_3d_split((Nx,Nx,Nz),units= units, NZsplit=4,lam = lam)
+
+    

@@ -156,39 +156,39 @@ def test_split():
 
 
 if __name__ == '__main__':
-    from bpm.bpm_3d import bpm_3d_free
+    pass
+    # from bpm.bpm_3d import bpm_3d_free
     
-    Nx, Nz = 1024,1024
-    Nx, Nz = 2048,1024
+    # Nx, Nz = 1024,1024
+    # Nx, Nz = 2048,1024
 
-    Nx, Nz = 512,512
-    # Nx, Nz = 256,256
-    Lx = 400
-    Lz = 400
+    # Nx, Nz = 512,512
+    # # Nx, Nz = 256,256
+    # Lx = 400
+    # Lz = 400
 
-    dx, dz = 1.*Lx/Nx, 1.*Lz/Nz
+    # dx, dz = 1.*Lx/Nx, 1.*Lz/Nz
 
-    x = np.linspace(-1,1,Nx)
-    Y,X = np.meshgrid(x,x,indexing="ij")
-    R = np.sqrt(X**2+Y**2)
+    # x = np.linspace(-1,1,Nx)
+    # Y,X = np.meshgrid(x,x,indexing="ij")
+    # R = np.sqrt(X**2+Y**2)
 
-    u0_far = (R<.7)*np.cos(50*X)
-    u0_far = np.cos(2*np.pi*5*(R+.3*X**4))
-    u0_far = np.cos(2*np.pi*5*X)
+    # u0_far = (R<.7)*np.cos(50*X)
+    # u0_far = np.cos(2*np.pi*5*(R+.3*X**4))
+    # u0_far = np.cos(2*np.pi*5*X)
     
-    u0 = bpm_3d_free((Nx,Nx),(dx,dx),Lz,u0 = u0_far).conjugate()
+    # u0 = bpm_3d_free((Nx,Nx),(dx,dx),Lz,u0 = u0_far).conjugate()
     
 
-    lam = .5
+    # lam = .5
 
-    Np = 1000
-    x = dx*np.random.uniform(.1*Nx,.9*Nx,Np)
-    y = dx*np.random.uniform(.1*Nx,.9*Nx,Np)
-    z = dz*np.random.uniform(0.3*Nz,.5*Nz,Np)
-    points = np.array([x,y,z]).T
+    # Np = 1000
+    # x = dx*np.random.uniform(.1*Nx,.9*Nx,Np)
+    # y = dx*np.random.uniform(.1*Nx,.9*Nx,Np)
+    # z = dz*np.random.uniform(0.3*Nz,.5*Nz,Np)
+    # points = np.array([x,y,z]).T
 
-    u,dn = bpm_3d_spheres_split((Nx,Nx,Nz),(dx,dx,dz),
-                                   NZsplit = 2,
-                                u0 = u0,
-                           points = points)
-    
+    # u,dn = bpm_3d_spheres_split((Nx,Nx,Nz),(dx,dx,dz),
+    #                                NZsplit = 2,
+    #                             u0 = u0,
+    #                        points = points)
