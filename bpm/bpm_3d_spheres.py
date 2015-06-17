@@ -41,8 +41,8 @@ def create_dn_buffer(size, units,points,
 
 def bpm_3d_spheres(size, units, lam = .5, u0 = None,
                    points = None,
-                   dn_inner = 0.04, rad_inner = 3.,                   
-                   dn_outer = 0.02, rad_outer = 4.,
+                   dn_inner = 0.0, rad_inner = 0.,                   
+                   dn_outer = 0.05, rad_outer = 2.5,
                    return_scattering = False,
                    use_fresnel_approx = False
 ):

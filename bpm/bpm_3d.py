@@ -3,7 +3,7 @@
 import numpy as np
 
 import volust
-from volust.volgpu import OCLArray, OCLProgram
+from volust.volgpu import OCLArray, OCLProgram, get_device
 from volust.volgpu.oclfft import ocl_fft, ocl_fft_plan
 from volust.volgpu.oclalgos import OCLReductionKernel
 
@@ -13,6 +13,7 @@ from bpm.utils import StopWatch, absPath
 
 def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
            return_scattering = False,
+           return_g = False,
            use_fresnel_approx = False):
     """
     simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
@@ -35,6 +36,7 @@ def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
     #setting up the propagator
     k0 = 2.*np.pi/lam
 
+    # fixme: = fftfreq
     kxs = np.arange(-Nx/2.,Nx/2.)/Nx
     kys = np.arange(-Ny/2.,Ny/2.)/Ny
 
@@ -45,7 +47,7 @@ def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
     if use_fresnel_approx:
         H0  = 1./lam*(0.j+1.-.5*lam**2*(KX**2/dx**2+KY**2/dy**2))
 
-        
+
     outsideInds = np.isnan(H0)
     H = np.exp(2.j*np.pi*dz*H0)
     H[outsideInds] = 0.
@@ -85,18 +87,25 @@ def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
 
         
     if return_scattering:
-        scatter_weights = np.fft.fftshift(np.real(H0)*
-                                          np.sqrt(KX**2/dx**2+KY**2/dy**2))
+        # scatter_weights = np.fft.fftshift(np.real(H0)*
+        #                                   np.sqrt(KX**2/dx**2+KY**2/dy**2))
         
-        scatter_weights *= scatter_weights
+        # scatter_weights *= scatter_weights
 
-        # scatter_weights = np.fft.fftshift(np.real(H0))
+
+        scatter_weights = np.fft.fftshift(lam*np.real(H0))
         
         scatter_weights_g = OCLArray.from_array(scatter_weights.astype(np.float32))
 
+        #which is the cosine
+        gfactor_weights = np.fft.fftshift(lam**2*np.real(H0)**2)
+        
+        gfactor_weights_g = OCLArray.from_array(gfactor_weights.astype(np.float32))
 
 
         scatter_cross_sec_g = OCLArray.zeros(Nz,"float32")
+        gfactor_g = OCLArray.zeros(Nz,"float32")
+
         plain_wave_dct = Nx*Ny*np.exp(2.j*np.pi*np.arange(Nz)*dz/lam).astype(np.complex64)
 
         reduce_kernel = OCLReductionKernel(
@@ -105,10 +114,15 @@ def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
             map_expr="weights[i]*cfloat_abs(field[i]-(i==0)*plain)*cfloat_abs(field[i]-(i==0)*plain)",
             arguments="__global cfloat_t *field, __global float * weights,cfloat_t plain")
 
-    u_g[0,...] = plane_g
+        reduce_gfactor_kernel = OCLReductionKernel(
+        np.float32, neutral="0",
+            reduce_expr="a+b",
+            map_expr="weights[i]*cfloat_abs(field[i]-(i==0)*plain)*cfloat_abs(field[i]-(i==0)*plain)",
+            arguments="__global cfloat_t *field, __global float * weights,cfloat_t plain")
 
- 
+    u_g[0,...] = plane_g
     clock.toc("setup")
+    
     clock.tic("run")
 
     for i in range(Nz-1):
@@ -120,6 +134,9 @@ def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
         if return_scattering:
             scatter_cross_sec_g[i+1] = reduce_kernel(plane_g,
                                                      scatter_weights_g,
+                                                     plain_wave_dct[i+1])
+            gfactor_g[i+1] = reduce_gfactor_kernel(plane_g,
+                                                     gfactor_weights_g,
                                                      plain_wave_dct[i+1])
         
         ocl_fft(plane_g,inplace = True, inverse = True,  plan  = plan)
@@ -136,16 +153,20 @@ def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
                            np.int32((i+1)*Nx*Ny))
             
         u_g[i+1,...] = plane_g
-
- 
-
+        
+        
     clock.toc("run")
 
     print clock
     if return_scattering:
-        return u_g.get(), dn_g.get(), scatter_cross_sec_g.get()/Nx/Ny
+        prefac = 1./Nx/Ny*dx*dy
+        if return_g:
+            return u_g.get(), dn_g.get(), prefac*scatter_cross_sec_g.get(),
+            prefac*gfactor_g.get()
+        else:
+            return u_g.get(), dn_g.get(), prefac*scatter_cross_sec_g.get()
     else:
-        return u_g.get(), dn_g.get()
+        return u_g.get(), dn_g.get() 
 
 
 def bpm_3d_split(size, units, NZsplit = 1, lam = .5, u0 = None, dn = None,           
@@ -282,29 +303,46 @@ def test_3d():
                       return_scattering = True)
 
 
+def test_speed():
+    from time import time
+    
+    for N in [64,128,256,512,1024][2:]:
+        shape = (N,N,64)
+        bpm_3d(shape,units= (.1,)*3)
+
+        Niter = 3
+        t = time()
+        for i in range(Niter):
+            bpm_3d(shape,units= (.1,)*3)
+        
+        print "time to bpm through %s = %.3f ms"%(shape,1000.*(time()-t)/Niter)
+
+
 
 if __name__ == '__main__':
-                           
-    Nx, Nz = 256,128
-    dx, dz = .05, 0.05
+    test_speed()
 
-    lam = .5
-
-    units = (dx,dx,dz)
-    rad = 2.
-
-    x = dx*np.arange(-Nx/2,Nx/2)
-    x = dx*np.arange(-Nx/2,Nx/2)
-    z = dz*np.arange(Nz)
-    Z,Y,X = np.meshgrid(z,x,x,indexing="ij")
-    R = np.sqrt(X**2+Y**2)
-    dn = ((R<2.)*(Z<.1))*100.j
     
-    u, dn, p = bpm_3d((Nx,Nx,Nz),units= units, lam = lam,
-                      dn = dn,
-                      return_scattering = True )
+    # Nx, Nz = 256,128
+    # dx, dz = .05, 0.05
 
-    u0 = u[1,...]
+    # lam = .5
+
+    # units = (dx,dx,dz)
+    # rad = 2.
+
+    # x = dx*np.arange(-Nx/2,Nx/2)
+    # x = dx*np.arange(-Nx/2,Nx/2)
+    # z = dz*np.arange(Nz)
+    # Z,Y,X = np.meshgrid(z,x,x,indexing="ij")
+    # R = np.sqrt(X**2+Y**2)
+    # dn = ((R<2.)*(Z<.1))*100.j
+    
+    # u, dn, p = bpm_3d((Nx,Nx,Nz),units= units, lam = lam,
+    #                   dn = dn,
+    #                   return_scattering = True )
+
+    # u0 = u[1,...]
     # u = bpm_3d_split((Nx,Nx,Nz),units= units, NZsplit=4,lam = lam)
 
     
