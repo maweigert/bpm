@@ -20,6 +20,29 @@ __kernel void mult_dn(__global cfloat_t* input,
 
 }
 
+__kernel void mult_dn_image(__global cfloat_t* input,
+							__read_only image3d_t dn,
+							const float unit_k,
+							const int zpos,
+							const int subsample){
+
+  const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE| CLK_ADDRESS_CLAMP_TO_EDGE| CLK_FILTER_LINEAR;
+
+  uint i = get_global_id(0);
+  uint j = get_global_id(1);
+  uint Nx = get_global_size(0);
+
+
+  float dnDiff = unit_k*read_imagef(dn, sampler, (float4)(1.f*i/subsample,1.f*j/subsample,1.f*zpos/subsample,0)).x;
+  
+  cfloat_t dPhase = (cfloat_t)(cos(dnDiff),sin(dnDiff));
+
+  input[i+Nx*j] = cfloat_mul(input[i+Nx*j],dPhase);
+
+  
+}
+
+
 __kernel void mult_dn_complex(__global cfloat_t* input,
 					  __global cfloat_t* dn,const float unit_k, const int stride){
 
@@ -30,6 +53,28 @@ __kernel void mult_dn_complex(__global cfloat_t* input,
 
   
   input[i] = cfloat_mul(input[i],dPhase);
+
+}
+
+
+__kernel void mult_dn_complex_image(__global cfloat_t* input,
+									__read_only image3d_t dn,
+									const float unit_k,
+									const int zpos,
+									const int subsample){
+
+  const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE| CLK_ADDRESS_CLAMP_TO_EDGE| CLK_FILTER_LINEAR;
+
+  uint i = get_global_id(0);
+  uint j = get_global_id(1);
+  uint Nx = get_global_size(0);
+
+  float2 dn_val = read_imagef(dn, sampler, (float4)(1.f*i/subsample,1.f*j/subsample,1.f*zpos/subsample,0)).xy;
+  
+  cfloat_t dnDiff = cfloat_mul((cfloat_t)(0,unit_k),(cfloat_t)(dn_val.x,dn_val.y));
+  cfloat_t dPhase = cfloat_exp(dnDiff);
+  
+  input[i+Nx*j] = cfloat_mul(input[i+Nx*j],dPhase);
 
 }
 
@@ -59,6 +104,21 @@ __kernel void divide_dn_complex(__global cfloat_t* plane0,__global cfloat_t* pla
 
   
 }
+
+
+__kernel void copy_subsampled_buffer(__global cfloat_t* buffer,__global cfloat_t* plane,
+									 const int subsample,
+									 const int stride){
+
+  uint i = get_global_id(0);
+  uint j = get_global_id(1);
+
+  uint Nx = get_global_size(0);
+
+  buffer[i+Nx*j+stride] = plane[i*subsample+subsample*subsample*Nx*j];  
+}
+
+
 
 __kernel void copy_complex(__global cfloat_t* input,__global cfloat_t* plane,
 					  const int stride){

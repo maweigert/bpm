@@ -1,16 +1,230 @@
-"""the main method for beam propagation in media with coated spheres"""
+"""the main method for beam propagation in refractive media"""
 
 import numpy as np
 
 import volust
-from volust.volgpu import OCLArray, OCLProgram, get_device
+from volust.volgpu import OCLArray, OCLImage, OCLProgram, get_device
 from volust.volgpu.oclfft import ocl_fft, ocl_fft_plan
 from volust.volgpu.oclalgos import OCLReductionKernel
 
 from bpm.utils import StopWatch, absPath
 
 
-def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
+def bpm_3d(size,
+           units,
+           lam = .5,
+           u0 = None, dn = None,
+           subsample = 1,
+           n_volumes = 1,
+           return_scattering = False,
+           return_g = False,
+           use_fresnel_approx = False):
+    """
+    simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
+
+    size     -    the dimension of the image to be calulcated  in pixels (Nx,Ny,Nz)
+    units    -    the unit lengths of each dimensions in microns
+    lam      -    the wavelength
+    u0       -    the initial field distribution, if u0 = None an incident  plane wave is assumed
+    dn       -    the refractive index of the medium (can be complex)
+
+    """
+
+    if n_volumes ==1:
+        return _bpm_3d(size, units,
+                       lam = lam,
+                       u0 = u0, dn = dn,
+                       subsample = subsample,
+                       return_scattering = return_scattering,
+                       return_g = return_g,
+                       use_fresnel_approx = use_fresnel_approx)
+    else:
+        return _bpm_3d_split(size, units,
+                             lam = lam,
+                             u0 = u0, dn = dn,
+                             n_volumes = n_volumes,
+                             subsample = subsample,
+                             return_scattering = return_scattering,
+                             return_g = return_g,
+                             use_fresnel_approx = use_fresnel_approx)
+
+
+#this is the main method to calculate everything
+def _bpm_3d(size,
+            units,
+            lam = .5,
+            u0 = None, dn = None,
+            subsample = 1,
+            return_scattering = False,
+            return_g = False,
+            return_full_last = False,
+            use_fresnel_approx = False):
+    """
+    simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
+
+    size     -    the dimension of the image to be calulcated  in pixels (Nx,Ny,Nz)
+    units    -    the unit lengths of each dimensions in microns
+    lam      -    the wavelength
+    u0       -    the initial field distribution, if u0 = None an incident  plane wave is assumed
+    dn       -    the refractive index of the medium (can be complex)
+
+    """
+    clock = StopWatch()
+
+    clock.tic("setup")
+
+    Nx, Ny, Nz = size
+    dx, dy, dz = units
+
+    # subsampling
+    Nx2, Ny2, Nz2 = (subsample*N for N in size)
+    dx2, dy2, dz2 = (1.*d/subsample for d in units)
+    
+    #setting up the propagator
+    k0 = 2.*np.pi/lam
+
+    kxs = 2.*np.pi*np.fft.fftfreq(Nx2,dx2)
+    kys = 2.*np.pi*np.fft.fftfreq(Ny2,dy2)
+
+    KY, KX = np.meshgrid(kxs,kys, indexing= "ij")
+
+    H0 = np.sqrt(0.j+k0**2-KX**2-KY**2)
+
+    if use_fresnel_approx:
+        H0  = 0.j+k0-.5*(KX**2+KY**2)
+
+    
+    outsideInds = np.isnan(H0)
+    H = np.exp(1.j*dz2*H0)
+    H[outsideInds] = 0.
+    H0[outsideInds] = 0.
+
+    if u0 is None:
+        u0 = np.ones((Ny2,Nx2),np.complex64)
+
+    # setting up the gpu buffers and kernels
+
+    program = OCLProgram(absPath("kernels/bpm_3d_kernels.cl"))
+
+    plan = ocl_fft_plan((Ny2,Nx2))
+    plane_g = OCLArray.from_array(u0.astype(np.complex64))
+
+    h_g = OCLArray.from_array(H.astype(np.complex64))
+
+    if dn is not None:
+        if isinstance(dn,OCLImage):
+            dn_g = dn
+        else:
+            if dn.dtype.type in (np.complex64,np.complex128):
+                dn_g = OCLImage.from_array(dn.astype(np.complex64))
+            else:
+                dn_g = OCLImage.from_array(dn.astype(np.float32))
+    else:
+        dn_g = OCLImage.from_array(zeros((Nz,Ny,Nx),dtype=np.float32))
+
+        
+    isComplexDn = dn_g.dtype.type in (np.complex64,np.complex128)
+
+        
+    if return_scattering:
+        # = cos(theta)
+        scatter_weights = np.real(H0)
+
+        scatter_weights_g = OCLArray.from_array(scatter_weights.astype(np.float32))
+
+        # = cos(theta)^2
+        gfactor_weights = np.real(H0)**2
+        
+        gfactor_weights_g = OCLArray.from_array(gfactor_weights.astype(np.float32))
+
+
+        scatter_cross_sec_g = OCLArray.zeros(Nz,"float32")
+        gfactor_g = OCLArray.zeros(Nz,"float32")
+
+        plain_wave_dct = Nx2*Ny2*np.exp(1.j*k0*np.arange(Nz)*dz).astype(np.complex64)
+
+        reduce_kernel = OCLReductionKernel(
+        np.float32, neutral="0",
+            reduce_expr="a+b",
+            map_expr="weights[i]*cfloat_abs(field[i]-(i==0)*plain)*cfloat_abs(field[i]-(i==0)*plain)",
+            arguments="__global cfloat_t *field, __global float * weights,cfloat_t plain")
+
+        reduce_gfactor_kernel = OCLReductionKernel(
+        np.float32, neutral="0",
+            reduce_expr="a+b",
+            map_expr="weights[i]*cfloat_abs(field[i]-(i==0)*plain)*cfloat_abs(field[i]-(i==0)*plain)",
+            arguments="__global cfloat_t *field, __global float * weights,cfloat_t plain")
+
+
+    u_g = OCLArray.empty((Nz,Ny,Nx),dtype=np.complex64)
+
+    program.run_kernel("copy_subsampled_buffer",(Nx,Ny),None,
+                           u_g.data,plane_g.data,
+                           np.int32(subsample),
+                           np.int32(0))
+
+    clock.toc("setup")
+    
+    clock.tic("run")
+
+    for i in range(Nz-1):
+        for substep in range(subsample):
+            ocl_fft(plane_g,inplace = True, plan  = plan)
+
+            program.run_kernel("mult",(Nx2*Ny2,),None,
+                               plane_g.data,h_g.data)
+            
+            if return_scattering and substep == (subsample-1):
+                scatter_cross_sec_g[i+1] = reduce_kernel(plane_g,
+                                                     scatter_weights_g,
+                                                     plain_wave_dct[i+1])
+                gfactor_g[i+1] = reduce_gfactor_kernel(plane_g,
+                                                     gfactor_weights_g,
+                                                     plain_wave_dct[i+1])
+        
+            ocl_fft(plane_g,inplace = True, inverse = True,  plan  = plan)
+
+            if isComplexDn:
+                program.run_kernel("mult_dn_complex_image",(Nx2,Ny2),None,
+                               plane_g.data,dn_g,
+                               np.float32(k0*dz2),
+                                   np.int32(subsample*i+substep),
+                                   np.int32(subsample))
+            else:
+                program.run_kernel("mult_dn_image",(Nx2,Ny2),None,
+                               plane_g.data,dn_g,
+                               np.float32(k0*dz2),
+                                   np.int32(subsample*i+substep),
+                                   np.int32(subsample))
+
+
+                
+        program.run_kernel("copy_subsampled_buffer",(Nx,Ny),None,
+                           u_g.data,plane_g.data,
+                           np.int32(subsample),
+                           np.int32((i+1)*Nx*Ny))
+                
+        
+    clock.toc("run")
+
+    print clock
+    result = (u_g.get(), dn_g.get(),)
+    
+    if return_scattering:
+        prefac = 1./Nx2/Ny2*dx2*dy2/4./np.pi
+        result += (prefac*scatter_cross_sec_g.get(),)
+        
+    if return_g:
+        prefac = 1./Nx/Ny*dx*dy/4./np.pi        
+        result += (prefac*gfactor_g.get(),)
+        
+    if return_full_last:
+        result += (plane_g.get(),)
+
+    return result
+
+
+def bpm_3d_old(size, units, lam = .5, u0 = None, dn = None,
            return_scattering = False,
            return_g = False,
            use_fresnel_approx = False):
@@ -189,20 +403,21 @@ def bpm_3d(size, units, lam = .5, u0 = None, dn = None,
     else:
         return u_g.get(), dn_g.get() 
 
-def bpm_3d_split(size, units, NZsplit = 1, lam = .5, u0 = None, dn = None,           
-           return_scattering = False,
+def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
+                 n_volumes = 1, subsample=1,
+                 return_scattering = False,
                  return_g = False,
-           use_fresnel_approx = False):
+                 use_fresnel_approx = False):
     """
-    same as bpm_3d but splits z into Nz pieces (e.g. if memory of GPU is not enough)
+    same as bpm_3d but splits z into n_volumes pieces (e.g. if memory of GPU is not enough)
     """
     
     Nx, Ny, Nz = size
 
-    Nz2 = Nz/NZsplit+1
+    Nz2 = Nz/n_volumes+1
 
     if u0 is None:
-        u0 = np.ones((Ny,Nx),np.complex64)
+        u0 = np.ones((subsample*Ny,subsample*Nx),np.complex64)
 
     if dn is None:
         dn = np.zeros((Nz,Ny,Nx),np.float32)
@@ -213,27 +428,42 @@ def bpm_3d_split(size, units, NZsplit = 1, lam = .5, u0 = None, dn = None,
     
     u_part = np.empty((Nz2,Ny,Nx),np.complex64)
 
-    u_part[-1,...] = u0
-    
-    for i in range(NZsplit):
+    for i in range(n_volumes):
         i1,i2 = i*Nz2, np.clip((i+1)*Nz2,0,Nz)
-        # print u_part[-1,...]
-        if i<NZsplit-1:
+        if i<n_volumes-1:
+            res_part = _bpm_3d((Nx,Ny,i2-i1+1),
+                               units = units,
+                               lam = lam,
+                               u0 = u0,
+                               dn = dn[i1:i2+1,:,:],
+                               subsample = subsample,
+                               return_full_last = True,
+                               return_scattering = return_scattering)
             if return_scattering:
-                u_part, _, p_part = bpm_3d((Nx,Ny,i2-i1+1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2+1,:,:], return_scattering = return_scattering)
+                u_part, _, p_part, u0 = res_part
                 p[i1:i2] = p_part[1:]
             else:
-                u_part, _= bpm_3d((Nx,Ny,i2-i1+1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2+1,:,:], return_scattering = return_scattering)
-                
+                u_part, _ , u0 = res_part
+
             u[i1:i2,...] = u_part[1:,...]
+            
         else:
+            res_part = _bpm_3d((Nx,Ny,i2-i1),
+                               units = units,
+                               lam = lam,
+                               u0 = u0,
+                               dn = dn[i1:i2,:,:],
+                               subsample = subsample,
+                               return_full_last = True,
+                               return_scattering = return_scattering)
+
             if return_scattering:
-                u_part, _, p_part = bpm_3d((Nx,Ny,i2-i1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2,:,:], return_scattering = return_scattering)
+                u_part, _, p_part, u0 = res_part
                 p[i1:i2] = p_part
                 p[i1] = p[i1-1]
             else:
-                u_part, _ = bpm_3d((Nx,Ny,i2-i1),units = units,lam = lam,u0 = u_part[-1,...],dn = dn[i1:i2,:,:], return_scattering = return_scattering)
-                
+                u_part, _, u0 = res_part
+
             u[i1:i2,...] = u_part
             
     if return_scattering:
@@ -339,10 +569,10 @@ def test_speed():
         print "time to bpm through %s = %.3f ms"%(shape,1000.*(time()-t)/Niter)
 
 def test_plane():
-    Nx, Nz = 128,128
+    Nx, Nz = 128,512
     dx, dz = .05, 0.05
 
-    lam = .5
+    lam = 2.
 
     units = (dx,dx,dz)
 
@@ -353,21 +583,52 @@ def test_plane():
     z = dz*np.arange(Nz)
     Z,Y,X = np.meshgrid(z,y,x,indexing="ij")
 
+    dn = .4*(Z>dx*Nz/3)*(Z<2*dx*Nz/3)
     
     u_plane = np.exp(2.j*np.pi/lam*Z)
 
 
     u, dn, p = bpm_3d((Nx,Nx,Nz),units= units, lam = lam,
-                      dn = 0*Z,
+                      dn = dn,
+                      subsample = 4,
                       return_scattering = True )
 
     print np.mean(np.abs(u_plane-u)**2)
-    return u, u_plane
+    return u, dn, p
+
+def test_sphere():
+    Nx, Nz = 128,256
+    dx, dz = .2, 0.2
+
+    lam = .5
+
+    units = (dx,dx,dz)
+
+    
+    
+    x = dx*np.arange(-Nx/2,Nx/2)
+    y = dx*np.arange(-Nx/2,Nx/2)
+    z = dz*np.arange(-Nz/2,Nz/2)
+    Z,Y,X = np.meshgrid(z,y,x,indexing="ij")
+    R = np.sqrt(X**2+Y**2+Z**2)
+    dn = .05*(R<2.)
+    
+    u, dn, p = bpm_3d((Nx,Nx,Nz),units= units,
+                      lam = lam,
+                      dn = dn,
+                      subsample = 4,
+                      n_volumes = 1,
+                      return_scattering = True )
+
+    return u, dn,p
+
 
 if __name__ == '__main__':
     # test_speed()
 
-    u, u_plane = test_plane()
+    # u, dn, p = test_sphere()
+
+    u, dn, p = test_plane()
 
 
     
