@@ -30,15 +30,18 @@ __kernel void mult_dn_image(__global cfloat_t* input,
 
   uint i = get_global_id(0);
   uint j = get_global_id(1);
-  uint Nx = get_global_size(0);
+  uint Nx2 = get_global_size(0);
 
+  float dn_val = read_imagef(dn, sampler, (float4)(1.f*i/subsample,1.f*j/subsample,1.f*zpos/subsample,0)).x;
 
-  float dnDiff = unit_k*read_imagef(dn, sampler, (float4)(1.f*i/subsample,1.f*j/subsample,1.f*zpos/subsample,0)).x;
+  float dnDiff = unit_k*dn_val;
   
   cfloat_t dPhase = (cfloat_t)(cos(dnDiff),sin(dnDiff));
 
-  input[i+Nx*j] = cfloat_mul(input[i+Nx*j],dPhase);
+  input[i+Nx2*j] = cfloat_mul(input[i+Nx2*j],dPhase);
 
+
+  // input[i+Nx2*j] = (cfloat_t)(dn_val,0.);
   
 }
 

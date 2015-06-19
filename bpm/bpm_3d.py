@@ -89,13 +89,16 @@ def _bpm_3d(size,
     KY, KX = np.meshgrid(kxs,kys, indexing= "ij")
 
     H0 = np.sqrt(0.j+k0**2-KX**2-KY**2)
+    H0 = np.sqrt(k0**2-KX**2-KY**2)
 
     if use_fresnel_approx:
         H0  = 0.j+k0-.5*(KX**2+KY**2)
 
     
     outsideInds = np.isnan(H0)
+
     H = np.exp(1.j*dz2*H0)
+
     H[outsideInds] = 0.
     H0[outsideInds] = 0.
 
@@ -120,7 +123,7 @@ def _bpm_3d(size,
             else:
                 dn_g = OCLImage.from_array(dn.astype(np.float32))
     else:
-        dn_g = OCLImage.from_array(zeros((Nz,Ny,Nx),dtype=np.float32))
+        dn_g = OCLImage.from_array(np.zeros((Nz,Ny,Nx),dtype=np.float32))
 
         
     isComplexDn = dn_g.dtype.type in (np.complex64,np.complex128)
@@ -158,11 +161,17 @@ def _bpm_3d(size,
 
     u_g = OCLArray.empty((Nz,Ny,Nx),dtype=np.complex64)
 
+
+    # u0 = np.meshgrid(np.linspace(0,1,Ny2),np.linspace(0,1.,Nx2))[0]
+    # plane_g = OCLArray.from_array(u0.astype(np.complex64))
+
     program.run_kernel("copy_subsampled_buffer",(Nx,Ny),None,
                            u_g.data,plane_g.data,
                            np.int32(subsample),
                            np.int32(0))
 
+    # return u_g.get(),1,1
+    
     clock.toc("setup")
     
     clock.tic("run")
@@ -188,13 +197,13 @@ def _bpm_3d(size,
                 program.run_kernel("mult_dn_complex_image",(Nx2,Ny2),None,
                                plane_g.data,dn_g,
                                np.float32(k0*dz2),
-                                   np.int32(subsample*i+substep),
+                                   np.int32(subsample*(i+1)+substep),
                                    np.int32(subsample))
             else:
                 program.run_kernel("mult_dn_image",(Nx2,Ny2),None,
-                               plane_g.data,dn_g,
-                               np.float32(k0*dz2),
-                                   np.int32(subsample*i+substep),
+                                   plane_g.data,dn_g,
+                                   np.float32(k0*dz2),
+                                   np.int32(subsample*(i+1)+substep),
                                    np.int32(subsample))
 
 
@@ -569,7 +578,7 @@ def test_speed():
         print "time to bpm through %s = %.3f ms"%(shape,1000.*(time()-t)/Niter)
 
 def test_plane():
-    Nx, Nz = 128,512
+    Nx, Nz = 128,128
     dx, dz = .05, 0.05
 
     lam = 2.
@@ -584,6 +593,7 @@ def test_plane():
     Z,Y,X = np.meshgrid(z,y,x,indexing="ij")
 
     dn = .4*(Z>dx*Nz/3)*(Z<2*dx*Nz/3)
+    dn *= 0
     
     u_plane = np.exp(2.j*np.pi/lam*Z)
 
@@ -594,11 +604,40 @@ def test_plane():
                       return_scattering = True )
 
     print np.mean(np.abs(u_plane-u)**2)
+    return u, dn, u_plane
+
+def test_slit():
+    Nx, Nz = 128,128
+    dx, dz = .05, 0.05
+
+    lam = 0.5
+
+    units = (dx,dx,dz)
+
+    
+    
+    x = np.linspace(-1,1,Nx)
+    y = np.linspace(-1,1,Nx)
+    Y,X = np.meshgrid(y,x,indexing="ij")
+
+    R = np.hypot(Y,X)
+
+    u0 = 1.*(R<.5) 
+
+    
+    u, dn, p = bpm_3d((Nx,Nx,Nz),units= units,
+                      lam = lam,
+                      u0 = u0,
+                      dn = np.zeros((Nz,Nx,Nx)),
+                      subsample = 1,
+                      return_scattering = True )
+
     return u, dn, p
 
+
 def test_sphere():
-    Nx, Nz = 128,256
-    dx, dz = .2, 0.2
+    Nx, Nz = 128,128
+    dx, dz = .05, 0.05
 
     lam = .5
 
@@ -606,29 +645,38 @@ def test_sphere():
 
     
     
+    x = Nx/2*dx*np.linspace(-1,1,Nx)
+    y = Nx/2*dx*np.linspace(-1,1,Nx)
+    
     x = dx*np.arange(-Nx/2,Nx/2)
     y = dx*np.arange(-Nx/2,Nx/2)
-    z = dz*np.arange(-Nz/2,Nz/2)
+    z = dz*np.arange(0,Nz)
     Z,Y,X = np.meshgrid(z,y,x,indexing="ij")
-    R = np.sqrt(X**2+Y**2+Z**2)
-    dn = .05*(R<2.)
+    R = np.sqrt(X**2+Y**2+(Z-3.)**2)
+    dn = .05*(R<1.)
     
     u, dn, p = bpm_3d((Nx,Nx,Nz),units= units,
                       lam = lam,
                       dn = dn,
-                      subsample = 4,
+                      subsample = 1,
                       n_volumes = 1,
                       return_scattering = True )
 
+    
+    print np.sum(np.abs(u[1:,...]))
     return u, dn,p
 
 
 if __name__ == '__main__':
     # test_speed()
 
-    # u, dn, p = test_sphere()
+    u, dn, p = test_sphere()
+    print u[0,0,-1]
 
-    u, dn, p = test_plane()
+    
+    # u, dn, p = test_plane()
+
+    # u, dn, p = test_slit()
 
 
     
