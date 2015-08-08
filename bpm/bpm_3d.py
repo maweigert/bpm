@@ -9,6 +9,9 @@ from volust.volgpu.oclalgos import OCLReductionKernel
 
 from bpm.utils import StopWatch, absPath
 
+from scipy.ndimage.interpolation import zoom
+
+#this is the main method to calculate everything
 
 def bpm_3d(size,
            units,
@@ -16,6 +19,7 @@ def bpm_3d(size,
            u0 = None, dn = None,
            subsample = 1,
            n_volumes = 1,
+           n0 = 1.,
            return_scattering = False,
            return_g = False,
            use_fresnel_approx = False):
@@ -27,7 +31,7 @@ def bpm_3d(size,
     lam      -    the wavelength
     u0       -    the initial field distribution, if u0 = None an incident  plane wave is assumed
     dn       -    the refractive index of the medium (can be complex)
-
+    n0       -    refractive index of surrounding medium
     """
 
     if n_volumes ==1:
@@ -35,6 +39,7 @@ def bpm_3d(size,
                        lam = lam,
                        u0 = u0, dn = dn,
                        subsample = subsample,
+                       n0 = n0,
                        return_scattering = return_scattering,
                        return_g = return_g,
                        use_fresnel_approx = use_fresnel_approx)
@@ -44,17 +49,18 @@ def bpm_3d(size,
                              u0 = u0, dn = dn,
                              n_volumes = n_volumes,
                              subsample = subsample,
+                             n0 = n0,                            
                              return_scattering = return_scattering,
                              return_g = return_g,
                              use_fresnel_approx = use_fresnel_approx)
 
 
-#this is the main method to calculate everything
 def _bpm_3d(size,
             units,
             lam = .5,
             u0 = None, dn = None,
             subsample = 1,
+            n0 = 1.,
             return_scattering = False,
             return_g = False,
             return_full_last = False,
@@ -79,9 +85,9 @@ def _bpm_3d(size,
     # subsampling
     Nx2, Ny2, Nz2 = (subsample*N for N in size)
     dx2, dy2, dz2 = (1.*d/subsample for d in units)
-    
+
     #setting up the propagator
-    k0 = 2.*np.pi/lam
+    k0 = 2.*np.pi/lam*n0
 
     kxs = 2.*np.pi*np.fft.fftfreq(Nx2,dx2)
     kys = 2.*np.pi*np.fft.fftfreq(Ny2,dy2)
@@ -104,6 +110,9 @@ def _bpm_3d(size,
 
     if u0 is None:
         u0 = np.ones((Ny2,Nx2),np.complex64)
+    else:
+        if subsample >1:
+            u0 = zoom(np.real(u0),subsample) + 1.j*zoom(np.imag(u0),subsample) 
 
     # setting up the gpu buffers and kernels
 
@@ -122,11 +131,11 @@ def _bpm_3d(size,
                 dn_g = OCLImage.from_array(dn.astype(np.complex64))
             else:
                 dn_g = OCLImage.from_array(dn.astype(np.float32))
-    else:
-        dn_g = OCLImage.from_array(np.zeros((Nz,Ny,Nx),dtype=np.float32))
-
         
-    isComplexDn = dn_g.dtype.type in (np.complex64,np.complex128)
+        isComplexDn = dn_g.dtype.type in (np.complex64,np.complex128)
+    else:
+        #dummy dn
+        dn_g = OCLArray.empty((1,)*3,np.float16)
 
         
     if return_scattering:
@@ -161,16 +170,11 @@ def _bpm_3d(size,
 
     u_g = OCLArray.empty((Nz,Ny,Nx),dtype=np.complex64)
 
-
-    # u0 = np.meshgrid(np.linspace(0,1,Ny2),np.linspace(0,1.,Nx2))[0]
-    # plane_g = OCLArray.from_array(u0.astype(np.complex64))
-
     program.run_kernel("copy_subsampled_buffer",(Nx,Ny),None,
                            u_g.data,plane_g.data,
                            np.int32(subsample),
                            np.int32(0))
 
-    # return u_g.get(),1,1
     
     clock.toc("setup")
     
@@ -190,22 +194,24 @@ def _bpm_3d(size,
                 gfactor_g[i+1] = reduce_gfactor_kernel(plane_g,
                                                      gfactor_weights_g,
                                                      plain_wave_dct[i+1])
-        
+
             ocl_fft(plane_g,inplace = True, inverse = True,  plan  = plan)
 
-            if isComplexDn:
-                program.run_kernel("mult_dn_complex_image",(Nx2,Ny2),None,
-                               plane_g.data,dn_g,
-                               np.float32(k0*dz2),
-                                   np.int32(subsample*(i+1)+substep),
-                                   np.int32(subsample))
-            else:
-                program.run_kernel("mult_dn_image",(Nx2,Ny2),None,
+            if dn is not None:
+                if isComplexDn:
+                    program.run_kernel("mult_dn_complex_image",(Nx2,Ny2),None,
                                    plane_g.data,dn_g,
                                    np.float32(k0*dz2),
-                                   np.int32(subsample*(i+1)+substep),
+                                   np.float32(n0),                               
+                                   np.int32(subsample*(i+1.)+substep),
                                    np.int32(subsample))
-
+                else:
+                    program.run_kernel("mult_dn_image",(Nx2,Ny2),None,
+                                   plane_g.data,dn_g,
+                                   np.float32(k0*dz2),
+                                   np.float32(n0),                                                                  
+                                   np.int32(subsample*(i+1.)+substep),
+                                   np.int32(subsample))
 
                 
         program.run_kernel("copy_subsampled_buffer",(Nx,Ny),None,
@@ -369,6 +375,7 @@ def bpm_3d_old(size, units, lam = .5, u0 = None, dn = None,
     
     clock.tic("run")
 
+    n0 = 1.
     for i in range(Nz-1):
         ocl_fft(plane_g,inplace = True, plan  = plan)
 
@@ -413,7 +420,9 @@ def bpm_3d_old(size, units, lam = .5, u0 = None, dn = None,
         return u_g.get(), dn_g.get() 
 
 def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
-                 n_volumes = 1, subsample=1,
+                 n_volumes = 1,
+                  n0 = 1.,
+                  subsample=1,
                  return_scattering = False,
                  return_g = False,
                  use_fresnel_approx = False):
@@ -445,6 +454,7 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                lam = lam,
                                u0 = u0,
                                dn = dn[i1:i2+1,:,:],
+                               n0 = n0,
                                subsample = subsample,
                                return_full_last = True,
                                return_scattering = return_scattering)
@@ -462,6 +472,7 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                lam = lam,
                                u0 = u0,
                                dn = dn[i1:i2,:,:],
+                               n0 = n0,                               
                                subsample = subsample,
                                return_full_last = True,
                                return_scattering = return_scattering)
@@ -481,7 +492,8 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
         return u, None
     
 def bpm_3d_free(size, units, dz, lam = .5, u0 = None,
-           use_fresnel_approx = False):
+                n0 = 1., 
+                use_fresnel_approx = False):
     """propagates the field u0 to distance dz
     """
     clock = StopWatch()
@@ -491,7 +503,7 @@ def bpm_3d_free(size, units, dz, lam = .5, u0 = None,
     dx, dy = units
 
     #setting up the propagator
-    k0 = 2.*np.pi/lam
+    k0 = 2.*np.pi/lam*n0
 
     kxs = np.arange(-Nx/2.,Nx/2.)/Nx
     kys = np.arange(-Ny/2.,Ny/2.)/Ny
@@ -577,34 +589,44 @@ def test_speed():
         
         print "time to bpm through %s = %.3f ms"%(shape,1000.*(time()-t)/Niter)
 
-def test_plane():
+def test_plane(n_x_comp = 0, n0 = 1.):
+    """ propagates a plane wave freely
+    n_x_comp is the tilt in x
+    """
     Nx, Nz = 128,128
     dx, dz = .05, 0.05
 
-    lam = 2.
+    lam = .5
 
     units = (dx,dx,dz)
-
-    
     
     x = dx*np.arange(Nx)
     y = dx*np.arange(Nx)
     z = dz*np.arange(Nz)
     Z,Y,X = np.meshgrid(z,y,x,indexing="ij")
 
-    dn = .4*(Z>dx*Nz/3)*(Z<2*dx*Nz/3)
-    dn *= 0
     
-    u_plane = np.exp(2.j*np.pi/lam*Z)
+    k_x = 1.*n_x_comp/(dx*(Nx-1.))
 
+    
+    k_z = np.sqrt(1.*n0**2/lam**2-k_x**2)
 
-    u, dn, p = bpm_3d((Nx,Nx,Nz),units= units, lam = lam,
-                      dn = dn,
-                      subsample = 4,
-                      return_scattering = True )
+    print np.sqrt(k_x**2+k_z**2)
+    
+    u_plane = np.exp(2.j*np.pi*(k_z*Z+k_x*X))
 
+    u = 0
+
+    u, dn = bpm_3d((Nx,Nx,Nz),units= units, lam = lam,
+                   n0 = n0,
+                   subsample = 2,
+                   u0 = u_plane[0,...])
+
+    # u, dn = bpm_3d_old((Nx,Nx,Nz),units= units, lam = lam,
+    #                u0 = u_plane[0,...])
+    
     print np.mean(np.abs(u_plane-u)**2)
-    return u, dn, u_plane
+    return u, u_plane
 
 def test_slit():
     Nx, Nz = 128,128
@@ -642,8 +664,6 @@ def test_sphere():
     lam = .5
 
     units = (dx,dx,dz)
-
-    
     
     x = Nx/2*dx*np.linspace(-1,1,Nx)
     y = Nx/2*dx*np.linspace(-1,1,Nx)
@@ -666,15 +686,50 @@ def test_sphere():
     print np.sum(np.abs(u[1:,...]))
     return u, dn,p
 
+def test_compare():
+    Nx, Nz = 128,256
+    dx, dz = .05, 0.05
+
+    lam = .5
+
+    units = (dx,dx,dz)
+
+    
+    
+    x = Nx/2*dx*np.linspace(-1,1,Nx)
+    y = Nx/2*dx*np.linspace(-1,1,Nx)
+    
+    x = dx*np.arange(-Nx/2,Nx/2)
+    y = dx*np.arange(-Nx/2,Nx/2)
+    z = dz*np.arange(0,Nz)
+    Z,Y,X = np.meshgrid(z,y,x,indexing="ij")
+    R = np.sqrt(X**2+Y**2+(Z-3.)**2)
+    dn = .05*(R<1.)
+    
+    u1, dn1, p1 = bpm_3d((Nx,Nx,Nz),units= units,
+                      lam = lam,
+                      dn = dn,
+                      subsample = 1,
+                      n_volumes = 1,
+                      return_scattering = True )
+
+    u2, dn2, p2 = bpm_3d_old((Nx,Nx,Nz),units= units,
+                      lam = lam,
+                      dn = dn,
+                      return_scattering = True )
+    
+    return u1, u2
+
 
 if __name__ == '__main__':
     # test_speed()
 
     u, dn, p = test_sphere()
-    print u[0,0,-1]
+
+    # u1, u2 = test_compare()
 
     
-    # u, dn, p = test_plane()
+    # u, u0 = test_plane(n_x_comp = 1 , n0 = 1.)
 
     # u, dn, p = test_slit()
 

@@ -23,10 +23,11 @@ __kernel void mult_dn(__global cfloat_t* input,
 __kernel void mult_dn_image(__global cfloat_t* input,
 							__read_only image3d_t dn,
 							const float unit_k,
+							const float n0,
 							const int zpos,
 							const int subsample){
 
-  const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE| CLK_ADDRESS_CLAMP_TO_EDGE| CLK_FILTER_LINEAR;
+  const sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE| CLK_ADDRESS_CLAMP_TO_EDGE| CLK_FILTER_NEAREST;
 
   uint i = get_global_id(0);
   uint j = get_global_id(1);
@@ -35,6 +36,8 @@ __kernel void mult_dn_image(__global cfloat_t* input,
   float dn_val = read_imagef(dn, sampler, (float4)(1.f*i/subsample,1.f*j/subsample,1.f*zpos/subsample,0)).x;
 
   float dnDiff = unit_k*dn_val;
+
+  dnDiff = unit_k*(dn_val+.5f*dn_val*dn_val);
   
   cfloat_t dPhase = (cfloat_t)(cos(dnDiff),sin(dnDiff));
 
@@ -63,6 +66,8 @@ __kernel void mult_dn_complex(__global cfloat_t* input,
 __kernel void mult_dn_complex_image(__global cfloat_t* input,
 									__read_only image3d_t dn,
 									const float unit_k,
+									const float n0,
+
 									const int zpos,
 									const int subsample){
 
