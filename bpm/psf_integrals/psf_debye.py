@@ -8,8 +8,7 @@ Journal of Modern Optics, 58(5-6)
 """
 
 
-from volust.volgpu import *
-from volust.volgpu.oclalgos import *
+from gputools import OCLArray, OCLImage, OCLProgram, get_device
 
 import itertools
 
