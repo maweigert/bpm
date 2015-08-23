@@ -77,7 +77,7 @@ def psf_cylindrical_focus_u0(shape,units,zfoc,lam,NA, n_integration_steps = 200)
     h , ex = psf_cylindrical((Nx,Ny,2),(dx,dy,4*zfoc),
                               lam = lam,NA = NA)
 
-    return ex
+    # return ex
     return ex[0,...]
 
 def test_cylinder():
