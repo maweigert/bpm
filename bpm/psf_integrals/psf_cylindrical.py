@@ -7,8 +7,7 @@ Determination of electric field at and near the focus of a cylindrical lens for 
 """
 
 
-from volust.volgpu import *
-from volust.volgpu.oclalgos import *
+from gputools import OCLArray, OCLImage, OCLProgram
 
 import numpy as np
 

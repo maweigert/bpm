@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from volust.volgpu import OCLArray, OCLProgram
+from gputools import OCLArray, OCLImage, OCLProgram
 
 from bpm.utils import absPath
 from bpm.bpm_3d import bpm_3d

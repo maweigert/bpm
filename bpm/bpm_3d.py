@@ -2,10 +2,9 @@
 
 import numpy as np
 
-import volust
-from volust.volgpu import OCLArray, OCLImage, OCLProgram, get_device
-from volust.volgpu.oclfft import ocl_fft, ocl_fft_plan
-from volust.volgpu.oclalgos import OCLReductionKernel
+from gputools import OCLArray, OCLImage, OCLProgram, get_device
+from gputools import fft, fft_plan
+from gputools import OCLReductionKernel
 
 from bpm.utils import StopWatch, absPath
 
@@ -118,7 +117,7 @@ def _bpm_3d(size,
 
     program = OCLProgram(absPath("kernels/bpm_3d_kernels.cl"))
 
-    plan = ocl_fft_plan((Ny2,Nx2))
+    plan = fft_plan((Ny2,Nx2))
     plane_g = OCLArray.from_array(u0.astype(np.complex64))
 
     h_g = OCLArray.from_array(H.astype(np.complex64))
@@ -182,7 +181,7 @@ def _bpm_3d(size,
 
     for i in range(Nz-1):
         for substep in range(subsample):
-            ocl_fft(plane_g,inplace = True, plan  = plan)
+            fft(plane_g,inplace = True, plan  = plan)
 
             program.run_kernel("mult",(Nx2*Ny2,),None,
                                plane_g.data,h_g.data)
@@ -195,7 +194,7 @@ def _bpm_3d(size,
                                                      gfactor_weights_g,
                                                      plain_wave_dct[i+1])
 
-            ocl_fft(plane_g,inplace = True, inverse = True,  plan  = plan)
+            fft(plane_g,inplace = True, inverse = True,  plan  = plan)
 
             if dn is not None:
                 if isComplexDn:
@@ -377,7 +376,7 @@ def bpm_3d_old(size, units, lam = .5, u0 = None, dn = None,
 
     n0 = 1.
     for i in range(Nz-1):
-        ocl_fft(plane_g,inplace = True, plan  = plan)
+        fft(plane_g,inplace = True, plan  = plan)
 
         program.run_kernel("mult",(Nx*Ny,),None,
                            plane_g.data,h_g.data)
@@ -390,7 +389,7 @@ def bpm_3d_old(size, units, lam = .5, u0 = None, dn = None,
                                                      gfactor_weights_g,
                                                      plain_wave_dct[i+1])
         
-        ocl_fft(plane_g,inplace = True, inverse = True,  plan  = plan)
+        fft(plane_g,inplace = True, inverse = True,  plan  = plan)
 
         if isComplexDn:
             program.run_kernel("mult_dn_complex",(Nx*Ny,),None,
@@ -543,36 +542,17 @@ def bpm_3d_free(size, units, dz, lam = .5, u0 = None,
     clock.toc("setup")
     clock.tic("run")
 
-    ocl_fft(plane_g,inplace = True, plan  = plan)
+    fft(plane_g,inplace = True, plan  = plan)
 
     program.run_kernel("mult",(Nx*Ny,),None,
                            plane_g.data,h_g.data)
 
-    ocl_fft(plane_g,inplace = True, inverse = True,  plan  = plan)
+    fft(plane_g,inplace = True, inverse = True,  plan  = plan)
 
     clock.toc("run")
 
     return plane_g.get()
     
-
-def test_3d():                        
-    Nx, Nz = 128,128
-    dx, dz = .05, 0.05
-
-    lam = .5
-
-    import imgtools
-    Z,Y,X = imgtools.ZYX(dshape=(Nz,Nx,Nx))
-    R = np.sqrt(X**2+Y**2+Z**2)
-    dn = np.zeros((Nz,Nx,Nx))
-
-    dn += .1* (R<.2)
-
-    dn = dn*(0+1.j)
-    
-    u, dn, p = bpm_3d((Nx,Nx,Nz),(dx,dx,dz),
-                      dn = dn, lam = lam,
-                      return_scattering = True)
 
 
 def test_speed():
