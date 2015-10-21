@@ -300,7 +300,7 @@ def psf_focus_u0(shape,units,zfoc,lam,NAs, n_integration_steps = 200):
     dx, dy = units
     h, ex, ey, ez = psf_debye((Nx,Ny,4),(dx,dy,zfoc/2.),
                               lam = lam,NAs = NAs)
-    return ex[0,...]
+    # return ex[0,...]
     #FIXME
     return ex[0,...].conjugate()
 
