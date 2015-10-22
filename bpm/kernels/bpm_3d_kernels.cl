@@ -13,7 +13,7 @@ __kernel void mult_dn(__global cfloat_t* input,
 					  __global float* dn,const float unit_k, const int stride){
 
   uint i = get_global_id(0);
-  float dnDiff = unit_k*dn[i+stride];
+  float dnDiff = -unit_k*dn[i+stride];
   cfloat_t dPhase = (cfloat_t)(cos(dnDiff),sin(dnDiff));
 
   input[i] = cfloat_mul(input[i],dPhase);
@@ -35,9 +35,9 @@ __kernel void mult_dn_image(__global cfloat_t* input,
 
   float dn_val = read_imagef(dn, sampler, (float4)(1.f*i/subsample,1.f*j/subsample,1.f*zpos/subsample,0)).x;
 
-  float dnDiff = unit_k*dn_val;
+  float dnDiff = -unit_k*dn_val;
 
-  dnDiff = unit_k*(dn_val+.5f*dn_val*dn_val);
+  // dnDiff = -unit_k*dn_val*(1.f+.5f*dn_val/n0);
   
   cfloat_t dPhase = (cfloat_t)(cos(dnDiff),sin(dnDiff));
 
@@ -53,7 +53,7 @@ __kernel void mult_dn_complex(__global cfloat_t* input,
 					  __global cfloat_t* dn,const float unit_k, const int stride){
 
   uint i = get_global_id(0);
-  cfloat_t dnDiff = cfloat_mul((cfloat_t)(0,unit_k),dn[i+stride]);
+  cfloat_t dnDiff = cfloat_mul((cfloat_t)(0,-unit_k),dn[i+stride]);
 
   cfloat_t dPhase = cfloat_exp(dnDiff);
 
@@ -79,7 +79,7 @@ __kernel void mult_dn_complex_image(__global cfloat_t* input,
 
   float2 dn_val = read_imagef(dn, sampler, (float4)(1.f*i/subsample,1.f*j/subsample,1.f*zpos/subsample,0)).xy;
   
-  cfloat_t dnDiff = cfloat_mul((cfloat_t)(0,unit_k),(cfloat_t)(dn_val.x,dn_val.y));
+  cfloat_t dnDiff = cfloat_mul((cfloat_t)(0,-unit_k),(cfloat_t)(dn_val.x,dn_val.y));
   cfloat_t dPhase = cfloat_exp(dnDiff);
   
   input[i+Nx*j] = cfloat_mul(input[i+Nx*j],dPhase);

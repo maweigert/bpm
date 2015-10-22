@@ -86,23 +86,23 @@ def _bpm_3d(size,
     dx2, dy2, dz2 = (1.*d/subsample for d in units)
 
     #setting up the propagator
-    k0 = 2.*np.pi/lam*n0
+    k0 = 2.*np.pi/lam
 
     kxs = 2.*np.pi*np.fft.fftfreq(Nx2,dx2)
     kys = 2.*np.pi*np.fft.fftfreq(Ny2,dy2)
 
     KY, KX = np.meshgrid(kxs,kys, indexing= "ij")
 
-    H0 = np.sqrt(0.j+k0**2-KX**2-KY**2)
-    H0 = np.sqrt(k0**2-KX**2-KY**2)
+    # H0 = np.sqrt(0.j+n0**2*k0**2-KX**2-KY**2)
+    H0 = np.sqrt(n0**2*k0**2-KX**2-KY**2)
 
     if use_fresnel_approx:
-        H0  = 0.j+k0-.5*(KX**2+KY**2)
+        H0  = 0.j+n0**2*k0-.5*(KX**2+KY**2)
 
     
     outsideInds = np.isnan(H0)
 
-    H = np.exp(1.j*dz2*H0)
+    H = np.exp(-1.j*dz2*H0)
 
     H[outsideInds] = 0.
     H0[outsideInds] = 0.
