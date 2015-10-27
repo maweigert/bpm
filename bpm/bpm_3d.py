@@ -152,7 +152,7 @@ def _bpm_3d(size,
         scatter_cross_sec_g = OCLArray.zeros(Nz,"float32")
         gfactor_g = OCLArray.zeros(Nz,"float32")
 
-        plain_wave_dct = Nx2*Ny2*np.exp(1.j*k0*np.arange(Nz)*dz).astype(np.complex64)
+        plain_wave_dct = Nx2*Ny2*np.exp(-1.j*k0*n0*np.arange(Nz)*dz).astype(np.complex64)
 
         reduce_kernel = OCLReductionKernel(
         np.float32, neutral="0",
