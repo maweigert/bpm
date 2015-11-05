@@ -50,7 +50,7 @@ def test_plane(n_x_comp = 0, n0 = 1., n = None):
 
 if __name__ == '__main__':
 
-    u1,u2 = test_plane(0,1.,1.4)
+    u1,u2 = test_plane(0,1.5)
 
     import pylab
     import seaborn
