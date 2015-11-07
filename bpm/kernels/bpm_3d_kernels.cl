@@ -20,6 +20,19 @@ __kernel void mult_dn(__global cfloat_t* input,
 
 }
 
+
+__kernel void mult_dn_complex(__global cfloat_t* input,
+					  __global cfloat_t* dn,const float unit_k, const int stride){
+
+  uint i = get_global_id(0);
+  cfloat_t dnDiff = cfloat_mul((cfloat_t)(0,-unit_k),dn[i+stride]);
+
+  cfloat_t dPhase = cfloat_exp(dnDiff);
+
+
+  input[i] = cfloat_mul(input[i],dPhase);
+
+}
 __kernel void mult_dn_image(__global cfloat_t* input,
 							__read_only image3d_t dn,
 							const float unit_k,
@@ -49,18 +62,6 @@ __kernel void mult_dn_image(__global cfloat_t* input,
 }
 
 
-__kernel void mult_dn_complex(__global cfloat_t* input,
-					  __global cfloat_t* dn,const float unit_k, const int stride){
-
-  uint i = get_global_id(0);
-  cfloat_t dnDiff = cfloat_mul((cfloat_t)(0,-unit_k),dn[i+stride]);
-
-  cfloat_t dPhase = cfloat_exp(dnDiff);
-
-  
-  input[i] = cfloat_mul(input[i],dPhase);
-
-}
 
 
 __kernel void mult_dn_complex_image(__global cfloat_t* input,
@@ -83,6 +84,11 @@ __kernel void mult_dn_complex_image(__global cfloat_t* input,
   cfloat_t dPhase = cfloat_exp(dnDiff);
   
   input[i+Nx*j] = cfloat_mul(input[i+Nx*j],dPhase);
+
+  //if ((i==64) &&(j==64))
+  //  printf("kernel %.10f \n",dn_val.y);
+
+  //input[i+Nx*j] = (cfloat_t)(1.f,0.f);
 
 }
 
