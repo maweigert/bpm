@@ -21,7 +21,9 @@ def bpm_3d(size,
            n0 = 1.,
            return_scattering = False,
            return_g = False,
-           use_fresnel_approx = False):
+           return_full_last = False,
+           use_fresnel_approx = False,
+           scattering_plane_ind = 0):
     """
     simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
 
@@ -40,8 +42,10 @@ def bpm_3d(size,
                        subsample = subsample,
                        n0 = n0,
                        return_scattering = return_scattering,
+                       return_full_last = return_full_last,
                        return_g = return_g,
-                       use_fresnel_approx = use_fresnel_approx)
+                       use_fresnel_approx = use_fresnel_approx,
+                       scattering_plane_ind =  scattering_plane_ind)
     else:
         return _bpm_3d_split(size, units,
                              lam = lam,
@@ -64,7 +68,8 @@ def _bpm_3d(size,
             return_scattering = False,
             return_g = False,
             return_full_last = False,
-            use_fresnel_approx = False):
+            use_fresnel_approx = False,
+            scattering_plane_ind = 0):
     """
     simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
 
@@ -157,7 +162,7 @@ def _bpm_3d(size,
         scatter_cross_sec_g = OCLArray.zeros(Nz,"float32")
         gfactor_g = OCLArray.zeros(Nz,"float32")
 
-        plain_wave_dct = Nx*Ny*np.exp(-1.j*k0*n0*np.arange(Nz)*dz).astype(np.complex64)
+        plain_wave_dct = Nx*Ny*np.exp(-1.j*k0*n0*(scattering_plane_ind+np.arange(Nz))*dz).astype(np.complex64)
 
 
         reduce_kernel = OCLReductionKernel(
@@ -466,6 +471,7 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
     u = np.empty((Nz,Ny,Nx),np.complex64)
 
     p = np.empty(Nz,np.float32)
+    g = np.empty(Nz,np.float32)
     
     u_part = np.empty((Nz2,Ny,Nx),np.complex64)
 
@@ -480,15 +486,22 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                n0 = n0,
                                subsample = subsample,
                                return_full_last = True,
-                               return_scattering = return_scattering)
+                               return_g = return_g,
+                               return_scattering = return_scattering,
+                               scattering_plane_ind = Nz2*i)
             if return_scattering:
-                u_part, _, p_part, u0 = res_part
+                if return_g:
+
+                    u_part, _, p_part, g_part , u0 = res_part
+                    g[i1:i2] = g_part[1:]
+                else:
+                    u_part, _, p_part, u0 = res_part
                 p[i1:i2] = p_part[1:]
             else:
                 u_part, _ , u0 = res_part
 
             u[i1:i2,...] = u_part[1:,...]
-            
+
         else:
             res_part = _bpm_3d((Nx,Ny,i2-i1),
                                units = units,
@@ -498,19 +511,30 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                n0 = n0,                               
                                subsample = subsample,
                                return_full_last = True,
-                               return_scattering = return_scattering)
+                               return_g = return_g,
+                               return_scattering = return_scattering,
+                               scattering_plane_ind = Nz2*i)
 
             if return_scattering:
-                u_part, _, p_part, u0 = res_part
+                if return_g:
+                    u_part, _, p_part, g_part ,u0 = res_part
+                    g[i1:i2] = g_part
+                    g[i1] = g[i1-1]
+                else:
+                    u_part, _, p_part, u0 = res_part
                 p[i1:i2] = p_part
                 p[i1] = p[i1-1]
             else:
                 u_part, _, u0 = res_part
 
             u[i1:i2,...] = u_part
-            
+
+
     if return_scattering:
-        return u, None,p
+        if return_g:
+            return u, None, p, g
+        else:
+            return u, None, p
     else:
         return u, None
     
