@@ -146,8 +146,15 @@ def _bpm_3d(size,
     if return_scattering:
         cos_theta = np.real(H0)/n0/k0
 
-        # = cos(theta)
+        # _H = np.sqrt(n0**2*k0**2-KX**2-KY**2)
+        # _H[np.isnan(_H)] = 0.
+        #
+        # cos_theta = _H/n0/k0
+        # # = cos(theta)
         scatter_weights = cos_theta
+
+        #scatter_weights = np.sqrt(KX**2+KY**2)/k0/np.real(H0)
+        #scatter_weights[outsideInds] = 0.
 
         scatter_weights_g = OCLArray.from_array(scatter_weights.astype(np.float32))
 
@@ -285,7 +292,7 @@ def _bpm_3d_image(size,
     kxs = 2.*np.pi*np.fft.fftfreq(Nx2,dx2)
     kys = 2.*np.pi*np.fft.fftfreq(Ny2,dy2)
 
-    KY, KX = np.meshgrid(kxs,kys, indexing= "ij")
+    KY, KX = np.meshgrid(kys,kxs, indexing= "ij")
 
     #H0 = np.sqrt(0.j+n0**2*k0**2-KX**2-KY**2)
     H0 = np.sqrt(n0**2*k0**2-KX**2-KY**2)
