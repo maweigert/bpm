@@ -12,7 +12,8 @@ def test_plane(n_x_comp = 0, n0 = 1., n = None):
     """ propagates a plane wave freely
     n_x_comp is the tilt in x
     """
-    Nx, Ny, Nz = 256, 256, 256
+    Nx, Ny, Nz = (256,)*3
+
     dx, dz = .05, 0.05
 
     if n is None:
@@ -44,25 +45,26 @@ def test_plane(n_x_comp = 0, n0 = 1., n = None):
 
 
     print "start"
-    u, dn = bpm_3d((Nx,Ny,Nz),units= units, lam = lam,
+    u = bpm_3d((Nx,Ny,Nz),units= units, lam = lam,
                    n0 = n0,
                    dn = dn,
+                   n_volumes = 4,
                    u0 = u_plane[0,...])
 
     # npt.assert_almost_equal(np.mean(np.abs(u_plane-u)**2),0,decimal = 2)
-    return u, u_plane
+    return u, u_plane, u_last
 
 if __name__ == '__main__':
 
-    u1,u2 = test_plane(1,1.)
+    u1,u2, u3 = test_plane(n_x_comp=1, n0 = 1.1)
 
     import pylab
     import seaborn
     pylab.figure(1)
     pylab.clf()
-    pylab.plot(np.imag(u1)[:,64,64], label="bpm")
+    pylab.plot(np.real(u1)[:,64,64], label="bpm")
     pylab.draw()
-    pylab.plot(np.imag(u2)[:,64,64], label="analy")
+    pylab.plot(np.real(u2)[:,64,64], label="analy")
     pylab.draw()
     pylab.legend()
     pylab.show()

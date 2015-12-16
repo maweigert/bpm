@@ -12,6 +12,17 @@ from scipy.ndimage.interpolation import zoom
 
 #this is the main method to calculate everything
 
+def memory_usage():
+    # return the memory usage in MB
+    import psutil
+    import os
+    import resource
+    mem1 = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000.
+    process = psutil.Process(os.getpid())
+    mem2 = process.memory_info()[0] / float(2 ** 20)
+    return np.round(mem1), np.round(mem2)
+
+
 def bpm_3d(size,
            units,
            lam = .5,
@@ -21,7 +32,7 @@ def bpm_3d(size,
            n0 = 1.,
            return_scattering = False,
            return_g = False,
-           return_full_last = False,
+           return_full = True,
            use_fresnel_approx = False,
            scattering_plane_ind = 0):
     """
@@ -33,6 +44,7 @@ def bpm_3d(size,
     u0       -    the initial field distribution, if u0 = None an incident  plane wave is assumed
     dn       -    the refractive index of the medium (can be complex)
     n0       -    refractive index of surrounding medium
+    return_full - if True, returns the complex field in volume otherwise only last plane
     """
 
     if n_volumes ==1:
@@ -42,7 +54,7 @@ def bpm_3d(size,
                        subsample = subsample,
                        n0 = n0,
                        return_scattering = return_scattering,
-                       return_full_last = return_full_last,
+                       return_full = return_full,
                        return_g = return_g,
                        use_fresnel_approx = use_fresnel_approx,
                        scattering_plane_ind =  scattering_plane_ind)
@@ -55,6 +67,7 @@ def bpm_3d(size,
                              n0 = n0,                            
                              return_scattering = return_scattering,
                              return_g = return_g,
+                             return_full = return_full,
                              use_fresnel_approx = use_fresnel_approx)
 
 
@@ -67,7 +80,7 @@ def _bpm_3d(size,
             n0 = 1.,
             return_scattering = False,
             return_g = False,
-            return_full_last = False,
+            return_full = True,
             use_fresnel_approx = False,
             scattering_plane_ind = 0):
     """
@@ -184,11 +197,9 @@ def _bpm_3d(size,
         #     map_expr = "weights[i]*(i!=0)*cfloat_abs(field[i])*cfloat_abs(field[i])",
         #     arguments = "__global cfloat_t *field, __global float * weights,cfloat_t plain")
 
-
-    u_g = OCLArray.empty((Nz,Ny,Nx),dtype=np.complex64)
-
-
-    u_g[0] = plane_g
+    if return_full:
+        u_g = OCLArray.empty((Nz,Ny,Nx),dtype=np.complex64)
+        u_g[0] = plane_g
 
     clock.toc("setup")
 
@@ -226,33 +237,37 @@ def _bpm_3d(size,
                                    np.float32(k0*dz),
                                    np.int32(Nx*Ny*(i+1)))
 
-
-        u_g[i+1] = plane_g
+        if return_full:
+            u_g[i+1] = plane_g
 
     clock.toc("run")
 
-
     print clock
-    result = (u_g.get(), dn_g.get(),)
 
-
+    if return_full:
+        u = u_g.get()
+    else:
+        u = plane_g.get()
 
     if return_scattering:
         # normalizing prefactor dkx = dx/Nx
         # prefac = 1./Nx/Ny*dx*dy/4./np.pi/n0
         prefac = 1./Nx/Ny*dx*dy
         p = prefac*scatter_cross_sec_g.get()
-        result += (p,)
+
 
     if return_g:
         prefac = 1./Nx/Ny*dx*dy
         g = prefac*gfactor_g.get()/p
-        result += (g,)
 
-    if return_full_last:
-        result += (plane_g.get(),)
+    if return_scattering:
+        if return_g:
+            return u,  p, g
+        else:
+            return u,  p
+    else:
+        return u
 
-    return result
 
 
 def _bpm_3d_image(size,
@@ -456,9 +471,10 @@ def _bpm_3d_image(size,
 
 def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                  n_volumes = 1,
-                  n0 = 1.,
-                  subsample=1,
+                 n0 = 1.,
+                 subsample=1,
                  return_scattering = False,
+                 return_full = True,
                  return_g = False,
                  use_fresnel_approx = False):
     """
@@ -474,13 +490,16 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
 
     if dn is None:
         dn = np.zeros((Nz,Ny,Nx),np.float32)
-    
-    u = np.empty((Nz,Ny,Nx),np.complex64)
+
+    if return_full:
+        u = np.empty((Nz,Ny,Nx),np.complex64)
+        u_part = np.empty((Nz2,Ny,Nx),np.complex64)
+    else:
+        u = np.empty((Ny,Nx),np.complex64)
+        u_part = np.empty((Ny,Nx),np.complex64)
 
     p = np.empty(Nz,np.float32)
     g = np.empty(Nz,np.float32)
-    
-    u_part = np.empty((Nz2,Ny,Nx),np.complex64)
 
     for i in range(n_volumes):
         i1,i2 = i*Nz2, np.clip((i+1)*Nz2,0,Nz)
@@ -492,22 +511,28 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                dn = dn[i1:i2+1,:,:],
                                n0 = n0,
                                subsample = subsample,
-                               return_full_last = True,
+                               return_full = return_full,
                                return_g = return_g,
                                return_scattering = return_scattering,
                                scattering_plane_ind = Nz2*i)
+
+
             if return_scattering:
                 if return_g:
 
-                    u_part, _, p_part, g_part , u0 = res_part
+                    u_part, p_part, g_part = res_part
                     g[i1:i2] = g_part[1:]
                 else:
-                    u_part, _, p_part, u0 = res_part
+                    u_part, p_part = res_part
                 p[i1:i2] = p_part[1:]
             else:
-                u_part, _ , u0 = res_part
+                u_part = res_part
 
-            u[i1:i2,...] = u_part[1:,...]
+            if return_full:
+                u[i1:i2,...] = u_part[:-1,...]
+                u0 = u_part[-1]
+            else:
+                u0 = u_part
 
         else:
             res_part = _bpm_3d((Nx,Ny,i2-i1),
@@ -517,33 +542,37 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                dn = dn[i1:i2,:,:],
                                n0 = n0,                               
                                subsample = subsample,
-                               return_full_last = True,
+                               return_full = return_full,
                                return_g = return_g,
                                return_scattering = return_scattering,
                                scattering_plane_ind = Nz2*i)
 
             if return_scattering:
                 if return_g:
-                    u_part, _, p_part, g_part ,u0 = res_part
+                    u_part, p_part, g_part = res_part
                     g[i1:i2] = g_part
                     g[i1] = g[i1-1]
                 else:
-                    u_part, _, p_part, u0 = res_part
+                    u_part, p_part = res_part
                 p[i1:i2] = p_part
                 p[i1] = p[i1-1]
             else:
-                u_part, _, u0 = res_part
 
-            u[i1:i2,...] = u_part
+                u_part = res_part
+            if return_full:
+                u[i1:i2,...] = u_part
+                u0 = u_part[-1]
+            else:
+                u = u_part
 
 
     if return_scattering:
         if return_g:
-            return u, None, p, g
+            return u,  p, g
         else:
-            return u, None, p
+            return u,  p
     else:
-        return u, None
+        return u
     
 def bpm_3d_free(size, units, dz, lam = .5, u0 = None,
                 n0 = 1., 
@@ -759,7 +788,7 @@ def test_compare():
 if __name__ == '__main__':
     # test_speed()
 
-    u, dn, p = test_sphere()
+    u, p = test_sphere()
 
     # u1, u2 = test_compare()
 
