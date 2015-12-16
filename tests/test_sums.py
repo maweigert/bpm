@@ -4,6 +4,8 @@
 from bpm import bpm_3d
 
 
+from bpm.bpm_class import Bpm3d
+
 import sys
 import pymiecoated as pym
 
@@ -47,14 +49,22 @@ def bpm_p(r1,dn1, r2 = None, dn2 = None, lam= .5, n0 = 1.):
 
     add_coated_sphere(dn0,[Nz/2,Nx/2,Nx/2],r1=int(r1/dx),r2 = int(r2/dx),dn1 = dn1,dn2 = dn2)
 
+
     u, _, p, g = bpm_3d((Nx,Nx,Nz),units= (dx,)*3,
                             lam = lam,
                             n0 = n0,
                             dn = dn0,
                             return_scattering = True,
-                     return_g = True
+                            return_g = True
                             )
-    return u, p, dn0, g
+
+    m = Bpm3d((Nx,Nx,Nz),units= (dx,)*3,
+                            lam = lam,
+                            n0 = n0)
+
+    return u, p, dn0, g, m
+
+
 
 if __name__ == '__main__':
 
@@ -62,7 +72,8 @@ if __name__ == '__main__':
     n0 = 1.
 
     dn = 0.02
-    
 
 
-    u, p, dn0, g = bpm_p(2.5,n0*dn, r2 = 3., dn2 = n0*dn,lam = lam,n0= n0)
+    u, p, dn0, g, m = bpm_p(2.5,n0*dn, r2 = 3., dn2 = n0*dn,lam = lam,n0= n0)
+
+
