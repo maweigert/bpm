@@ -48,15 +48,17 @@ def test_plane(n_x_comp = 0, n0 = 1., n = None):
     u = bpm_3d((Nx,Ny,Nz),units= units, lam = lam,
                    n0 = n0,
                    dn = dn,
-                   n_volumes = 4,
+                   n_volumes = 1,
                    u0 = u_plane[0,...])
 
-    # npt.assert_almost_equal(np.mean(np.abs(u_plane-u)**2),0,decimal = 2)
-    return u, u_plane, u_last
+    npt.assert_almost_equal(np.mean(np.abs(u_plane-u)**2),0,decimal = 2)
+    return u, u_plane
 
 if __name__ == '__main__':
 
-    u1,u2, u3 = test_plane(n_x_comp=1, n0 = 1.1)
+    # u1,u2 = test_plane(n_x_comp=1, n0 = 1.1)
+
+    u1,u2 = test_plane(n_x_comp=0, n0 = 1.0)
 
     import pylab
     import seaborn
