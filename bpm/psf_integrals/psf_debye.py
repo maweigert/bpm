@@ -43,7 +43,15 @@ def test_bessel(n,x):
 
 
 def psf_debye(shape,units,lam,NAs, n_integration_steps = 200):
-    """NAs is an increasing list of NAs
+    """
+    calculates the detection psf for a perfect, aberration free optical system
+    via the vectorial debye diffraction integral
+
+    returns u,ex,ey,ex
+    with u being the intensity and (ex,ey,ez) the complex field components
+
+
+    NAs is an increasing list of NAs
     NAs = [.1,.2,.5,.6] lets light through the annulus .1<.2 and .5<.6
     """
 
@@ -106,6 +114,87 @@ def psf_debye(shape,units,lam,NAs, n_integration_steps = 200):
         
     return u_all, ex_all, ey_all, ez_all
 
+def psf_debye_gauss(shape,units,lam,NAs, sig = 1./np.sqrt(2), n_integration_steps = 200):
+    """
+    calculates the detection psf for a perfect, aberration free optical system
+    via the vectorial debye diffraction integral
+    illuminated with a gaussian envelope
+
+
+    returns u,ex,ey,ex
+    with u being the intensity and (ex,ey,ez) the complex field components
+
+    the envelope intensity is exp(-r**2/2/sig**2) where r==1 corresponds
+    to the aperture's edge, e.g. with sig = 1/sqrt(2) the energy drops to 1/e
+    at the rim
+
+    NAs is an increasing list of NAs
+    NAs = [.1,.2,.5,.6] lets light through the annulus .1<.2 and .5<.6
+    """
+
+    p = OCLProgram(absPath("psf_debye.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+
+
+    assert (sig>0)
+
+    Nx0, Ny0, Nz0 = shape
+    dx, dy, dz = units
+
+    alphas = np.arcsin(np.array(NAs))
+
+    Nx = (Nx0+1)/2
+    Ny = (Ny0+1)/2
+    Nz = (Nz0+1)/2
+
+    u_g = OCLArray.empty((Nz,Ny,Nx),np.float32)
+    ex_g = OCLArray.empty(u_g.shape,np.complex64)
+    ey_g = OCLArray.empty(u_g.shape,np.complex64)
+    ez_g = OCLArray.empty(u_g.shape,np.complex64)
+
+    alpha_g = OCLArray.from_array(alphas.astype(np.float32))
+
+    t = time.time()
+
+    p.run_kernel("debye_wolf_gauss",u_g.shape[::-1],None,
+                 ex_g.data,ey_g.data,ez_g.data, u_g.data,
+                 np.float32(1.),np.float32(0.),
+                 np.float32(0),np.float32(dx*Nx),
+                 np.float32(0),np.float32(dy*Ny),
+                 np.float32(0),np.float32(dz*Nz),
+                 np.float32(lam),
+                 np.float32(sig),
+                 alpha_g.data, np.int32(len(alphas)))
+
+    u = u_g.get()
+    ex = ex_g.get()
+    ey = ey_g.get()
+    ez = ez_g.get()
+
+    print "time in secs:" , time.time()-t
+
+    u_all = np.empty((Nz0,Ny0,Nx0),np.float32)
+    ex_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
+    ey_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
+    ez_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
+
+    sx = [slice(0,Nx),slice(Nx0-Nx0/2,Nx0)]
+    sy = [slice(0,Ny),slice(Ny0-Ny0/2,Ny0)]
+    sz = [slice(0,Nz),slice(Nz0-Nz0/2,Nz0)]
+
+    sx = [slice(0,Nx),slice(Nx0-Nx,Nx0)]
+    sy = [slice(0,Ny),slice(Ny0-Ny,Ny0)]
+    sz = [slice(0,Nz),slice(Nz0-Nz,Nz0)]
+
+    for i,j,k in itertools.product([0,1],[0,1],[0,1]):
+        u_all[sz[1-i],sy[1-j],sx[1-k]] = u[::(-1)**i,::(-1)**j,::(-1)**k]
+        ex_all[sz[1-i],sy[1-j],sx[1-k]] = ex[::(-1)**i,::(-1)**j,::(-1)**k]
+        ey_all[sz[1-i],sy[1-j],sx[1-k]] = ey[::(-1)**i,::(-1)**j,::(-1)**k]
+        ez_all[sz[1-i],sy[1-j],sx[1-k]] = ez[::(-1)**i,::(-1)**j,::(-1)**k]
+
+
+    return u_all, ex_all, ey_all, ez_all
+
+
 
 
 def psf_debye_new(shape,units,lam,NAs, n_integration_steps = 200):
@@ -163,6 +252,7 @@ def psf_debye_new(shape,units,lam,NAs, n_integration_steps = 200):
                  np.float32(-dx*(Nx-1)/2.),np.float32(dx*(Nx-1)/2.),
                  np.float32(-dy*(Ny-1)/2.),np.float32(dy*(Ny-1)/2.),
                  np.float32(-dz*(Nz-1)/2.),np.float32(dz*(Nz-1)/2.))
+
 
     return u_g.get(), ex_g.get(), ey_g.get(), ez_g.get()
 
