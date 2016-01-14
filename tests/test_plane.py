@@ -8,11 +8,11 @@ from bpm import bpm_3d
 
 from bpm import bpm_3d
 
-def test_plane(n_x_comp = 0, n0 = 1., n = None):
+def test_plane(n_x_comp = 0, n0 = 1., n = None, N = 256):
     """ propagates a plane wave freely
     n_x_comp is the tilt in x
     """
-    Nx, Ny, Nz = (256,)*3
+    Nx, Ny, Nz = (N,)*3
 
     dx, dz = .05, 0.05
 
@@ -34,7 +34,7 @@ def test_plane(n_x_comp = 0, n0 = 1., n = None):
     
     k_z = np.sqrt(1.*n**2/lam**2-k_x**2)
 
-    print np.sqrt(k_x**2+k_z**2)
+    print (k_x,k_z), np.sqrt(k_x**2+k_z**2)
     
     u_plane = np.exp(-2.j*np.pi*(k_z*Z+k_x*X))
 
@@ -49,27 +49,67 @@ def test_plane(n_x_comp = 0, n0 = 1., n = None):
                    n0 = n0,
                    dn = dn,
                    n_volumes = 1,
+                   absorbing_width=10,
                    u0 = u_plane[0,...])
 
-    npt.assert_almost_equal(np.mean(np.abs(u_plane-u)**2),0,decimal = 2)
+    #npt.assert_almost_equal(np.mean(np.abs(u_plane-u)**2),0,decimal = 2)
     return u, u_plane
 
 if __name__ == '__main__':
 
     # u1,u2 = test_plane(n_x_comp=1, n0 = 1.1)
 
-    u1,u2 = test_plane(n_x_comp=0, n0 = 1.0)
+    Nx  =128
+    x_comps = [0,2]
+    n0s = [1.2,1.]
+
+    u_bpm, u_plane = [],[]
+    for x_comp,n0 in zip(x_comps, n0s):
+        u1,u2 = test_plane(n_x_comp=x_comp, n0 = n0, N = Nx)
+        u_bpm.append(u1)
+        u_plane.append(u2)
+
 
     import pylab
     import seaborn
+    col = seaborn.color_palette()
+
+    n = len(u_bpm)
+
+
     pylab.figure(1)
     pylab.clf()
-    pylab.plot(np.real(u1)[:,64,64], label="bpm")
-    pylab.draw()
-    pylab.plot(np.real(u2)[:,64,64], label="analy")
-    pylab.draw()
+    for i in range(n):
+        pylab.subplot(n,1,i+1)
+        pylab.plot(np.real(u_plane[i][:,Nx/2,Nx/2]), "-",c = col[1],  label="analy")
+        pylab.plot(np.real(u_bpm[i][:,Nx/2,Nx/2]), ".:", c = col[0], label="bpm")
+
+        pylab.legend()
+        pylab.title("x_comp = %s, n0 = %.2f"%(x_comps[i],n0s[i]))
+
+    pylab.figure(2)
+    pylab.clf()
+    for i in range(n):
+        pylab.subplot(n,2,2*i+1)
+        pylab.imshow(np.real(u_plane[i][:,Nx/2,:]), cmap = "hot")
+        pylab.grid("off")
+        pylab.title("anal,  x_comp = %s, n0 = %.2f"%(x_comps[i],n0s[i]))
+
+        pylab.subplot(n,2,2*i+2)
+        pylab.imshow(np.real(u_bpm[i][:,Nx/2,:]), cmap = "hot")
+        pylab.grid("off")
+        pylab.title("bpm,  x_comp = %s, n0 = %.2f"%(x_comps[i],n0s[i]))
+
+    # pylab.subplot(2,1,2)
+    # pylab.title("x_comp = 2")
+    # pylab.plot(np.real(a1)[:,64,64], "-", c = col[1], label="2 bpm")
+    # pylab.plot(np.real(a2)[:,64,64], ".",c = col[1],  label="2 analy")
+
+
     pylab.legend()
     pylab.show()
+    pylab.draw()
+
     # test_plane(1)
     # test_plane(2)
     

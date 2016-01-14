@@ -1,16 +1,7 @@
-
-
+from bpm.bpm.bpm_class import Bpm3d
+from numpy import *
 
 from bpm import bpm_3d
-
-
-from bpm.bpm_class import Bpm3d
-
-import sys
-import pymiecoated as pym
-
-
-from numpy import *
 
 def add_coated_sphere(dn,
                       c = (100,100,100),

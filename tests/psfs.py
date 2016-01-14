@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from bpm.psf_integrals import psf_debye, psf_debye_gauss
+from bpm import psf_debye, psf_debye_gauss
 
 
 if __name__ == '__main__':

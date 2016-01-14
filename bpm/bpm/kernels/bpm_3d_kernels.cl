@@ -1,5 +1,8 @@
-    #include <pyopencl-complex.h>
-    
+ #include <pyopencl-complex.h>
+
+  #define M_PI 3.14159265358979f
+
+
 __kernel void mult(__global cfloat_t* a,
 				   __global cfloat_t* b){
 
@@ -10,27 +13,67 @@ __kernel void mult(__global cfloat_t* a,
 }
 
 __kernel void mult_dn(__global cfloat_t* input,
-					  __global float* dn,const float unit_k, const int stride){
+					  __global float* dn,const float unit_k,
+					  const int stride,
+					  const int absorb){
 
-  uint i = get_global_id(0);
-  float dnDiff = -unit_k*dn[i+stride];
+  int i = get_global_id(0);
+  int j = get_global_id(1);
+  int Nx = get_global_size(0);
+  int Ny = get_global_size(1);
+
+
+
+  float dnDiff = -unit_k*dn[i+Nx*j+stride];
+
+  int distx = min(Nx-i-1,i);
+  int disty = min(Ny-j-1,j);
+  int dist = min(distx,disty);
+
+  float absorb_val = (dist<absorb)?0.5*(1-cos(M_PI*dist/absorb)):1.;
+
   cfloat_t dPhase = (cfloat_t)(cos(dnDiff),sin(dnDiff));
 
-  input[i] = cfloat_mul(input[i],dPhase);
+  cfloat_t res = cfloat_mul(input[i+Nx*j],dPhase);
+
+
+
+
+
+
+  res = cfloat_mul(res,(cfloat_t)(absorb_val,0.));
+
+  //res = (cfloat_t)(absorb_val,0.);
+  //res = (cfloat_t)(distx,disty);
+
+  //if (i+j==0)
+  //  printf("%d\n",absorb);
+
+
+  //if (absorb_val<.5)
+  //  printf("absorb %d %d: %.2f %.2f \n",i,j,res.x,res.y);
+
+  input[i+Nx*j] = res;
 
 }
 
 
 __kernel void mult_dn_complex(__global cfloat_t* input,
-					  __global cfloat_t* dn,const float unit_k, const int stride){
+					  __global cfloat_t* dn,
+					  const float unit_k,
+					  const int stride,
+					  const int absorb){
 
-  uint i = get_global_id(0);
-  cfloat_t dnDiff = cfloat_mul((cfloat_t)(0,-unit_k),dn[i+stride]);
+  int i = get_global_id(0);
+  int j = get_global_id(1);
+  int Nx = get_global_size(0);
+
+  cfloat_t dnDiff = cfloat_mul((cfloat_t)(0,-unit_k),dn[i+Nx*j+stride]);
 
   cfloat_t dPhase = cfloat_exp(dnDiff);
 
 
-  input[i] = cfloat_mul(input[i],dPhase);
+  input[i+Nx*j] = cfloat_mul(input[i+Nx*j],dPhase);
 
 }
 __kernel void mult_dn_image(__global cfloat_t* input,

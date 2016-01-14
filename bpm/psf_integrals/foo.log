@@ -1,2 +1,0 @@
-/Library/Python/2.7/site-packages/pyopencl/__init__.py:61: CompilerWarning: Non-empty compiler output encountered. Set the environment variable PYOPENCL_COMPILER_OUTPUT=1 to see more.
-  "to see more.", CompilerWarning)

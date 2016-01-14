@@ -9,7 +9,7 @@ from volust.volgpu.oclalgos import OCLElementwiseKernel
 
 from bpm.utils import StopWatch, absPath
 
-from bpm.bpm_3d_spheres import bpm_3d_spheres
+from bpm.bpm.bpm_3d_spheres import bpm_3d_spheres
 
 
 def bpm_3d_inverse(u,units, lam = .5,

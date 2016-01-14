@@ -1,5 +1,5 @@
 
-from bpm.bpm_3d import bpm_3d
+from bpm.bpm.bpm_3d import bpm_3d
 
 from numpy import *
 from scipy.special import jn

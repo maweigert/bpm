@@ -6,7 +6,7 @@ from gputools import OCLArray, OCLImage, OCLProgram, get_device
 from gputools import fft, fft_plan
 from gputools import OCLReductionKernel
 
-from bpm.utils import StopWatch, absPath
+from bpm.utils import StopWatch
 
 from scipy.ndimage.interpolation import zoom
 
@@ -23,6 +23,19 @@ def memory_usage():
     return np.round(mem1), np.round(mem2)
 
 
+def absPath(myPath):
+    import sys
+    import os
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+        return os.path.join(base_path, os.path.basename(myPath))
+    except Exception:
+        base_path = os.path.abspath(os.path.dirname(__file__))
+        return os.path.join(base_path, myPath)
+
+
 def bpm_3d(size,
            units,
            lam = .5,
@@ -33,6 +46,7 @@ def bpm_3d(size,
            return_scattering = False,
            return_g = False,
            return_full = True,
+           absorbing_width = 0,
            use_fresnel_approx = False,
            scattering_plane_ind = 0):
     """
@@ -47,6 +61,7 @@ def bpm_3d(size,
     return_full - if True, returns the complex field in volume otherwise only last plane
     """
 
+
     if n_volumes ==1:
         return _bpm_3d(size, units,
                        lam = lam,
@@ -56,6 +71,7 @@ def bpm_3d(size,
                        return_scattering = return_scattering,
                        return_full = return_full,
                        return_g = return_g,
+                       absorbing_width = absorbing_width,
                        use_fresnel_approx = use_fresnel_approx,
                        scattering_plane_ind =  scattering_plane_ind)
     else:
@@ -67,6 +83,7 @@ def bpm_3d(size,
                              n0 = n0,                            
                              return_scattering = return_scattering,
                              return_g = return_g,
+                             absorbing_width = absorbing_width,
                              return_full = return_full,
                              use_fresnel_approx = use_fresnel_approx)
 
@@ -82,6 +99,7 @@ def _bpm_3d(size,
             return_g = False,
             return_full = True,
             use_fresnel_approx = False,
+            absorbing_width = 0,
             scattering_plane_ind = 0):
     """
     simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
@@ -232,10 +250,15 @@ def _bpm_3d(size,
 
                 kernel_str = "mult_dn"
 
-            program.run_kernel(kernel_str,(Nx*Ny,),None,
+
+            program.run_kernel(kernel_str,(Nx,Ny,),None,
                                    plane_g.data,dn_g.data,
                                    np.float32(k0*dz),
-                                   np.int32(Nx*Ny*(i+1)))
+                                   np.int32(Nx*Ny*(i+1)),
+                               np.int32(absorbing_width))
+
+
+
 
         if return_full:
             u_g[i+1] = plane_g
@@ -476,6 +499,7 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                  return_scattering = False,
                  return_full = True,
                  return_g = False,
+                  absorbing_width = 0,
                  use_fresnel_approx = False):
     """
     same as bpm_3d but splits z into n_volumes pieces (e.g. if memory of GPU is not enough)
@@ -513,6 +537,7 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                subsample = subsample,
                                return_full = return_full,
                                return_g = return_g,
+                               absorbing_width = absorbing_width,
                                return_scattering = return_scattering,
                                scattering_plane_ind = Nz2*i)
 
@@ -540,10 +565,11 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                lam = lam,
                                u0 = u0,
                                dn = dn[i1:i2,:,:],
-                               n0 = n0,                               
+                               n0 = n0,
                                subsample = subsample,
                                return_full = return_full,
                                return_g = return_g,
+                               absorbing_width = absorbing_width,
                                return_scattering = return_scattering,
                                scattering_plane_ind = Nz2*i)
 

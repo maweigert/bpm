@@ -5,7 +5,7 @@ import numpy as np
 from gputools import OCLArray, OCLImage, OCLProgram
 
 from bpm.utils import absPath
-from bpm.bpm_3d import bpm_3d
+from bpm.bpm.bpm_3d import bpm_3d
 
 
 def create_dn_buffer(size, units,points,

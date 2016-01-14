@@ -1,10 +1,10 @@
 import os
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(name='bpm',
     version='0.1.1',
-    description='renders spim data in 3D',
-    url='http://mweigert@bitbucket.org/mweigert/bpm',
+    description='beam propagation',
+    url='',
     author='Martin Weigert',
     author_email='mweigert@mpi-cbg.de',
     license='MIT',
@@ -13,6 +13,6 @@ setup(name='bpm',
         'numpy', 'scipy',
     ],
 
-    package_data={"bpm":['kernels/*','psf_integrals/*.cl',]},
+    package_data={"bpm":['psf/kernels/*','psf_integrals/*.cl',]},
 
 )
