@@ -5,7 +5,7 @@ import numpy.testing as npt
 
 
 
-from bpm import bpm_3d, psf_debye, psf_focus_u0
+from bpm import bpm_3d, focus_field_debye, psf_focus_u0
 
 
 if __name__ == '__main__':
@@ -17,7 +17,7 @@ if __name__ == '__main__':
     NA = .7
 
 
-    _,u1, _, _ = psf_debye((Nx,Nx,2*Nz),(.1,)*3,lam = .5,NAs = [0.,NA])
+    _,u1, _, _ = focus_field_debye((Nx, Nx, 2 * Nz), (.1,) * 3, lam = .5, NAs = [0., NA])
 
     u1 = u1[Nz:]
 

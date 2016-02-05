@@ -1,5 +1,20 @@
+/*
+
+calculates the focus field via vectorial debye diffraction theory
+
+see
+Matthew R. Foreman, Peter Toeroek,
+Computational methods in vectorial imaging,
+Journal of Modern Optics, 2011, 58, 5-6, 339
+
+
+
+*/
+
+
+
 #include <pyopencl-complex.h>
-#include <bessel.cl>
+#include <kernels/bessel.cl>
 
 
 #ifndef INT_STEPS
@@ -16,6 +31,7 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
 						 const float y1,const float y2,
 						 const float z1,const float z2,
 						 const float lam,
+						 const float n0,
 						 __constant float* alphas, const int Nalphas){
 
   int i = get_global_id(0);
@@ -31,7 +47,7 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
   float z = z1+k*(z2-z1)/(Nz-1.f);
 
   float kr = 2.f*M_PI/lam*sqrt(x*x+y*y);
-  float kz = 2.f*M_PI/lam*z;
+  float kz = 2.f*M_PI/lam*z/n0;
   
   float phi = atan2(y,x); 
   
@@ -63,6 +79,7 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
 	  I1 += prefac*si*bessel_jn(1,kr*si)*phase;
 	  I2 += prefac*(co-1.f)*bessel_jn(2,kr*si)*phase;
 
+
 	}
   }
 
@@ -79,8 +96,12 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
   Ez[i+j*Nx+k*Nx*Ny] = ez;
 
   I[i+j*Nx+k*Nx*Ny] = vx*vx+vy*vy+vz*vz;
+
+  I[i+j*Nx+k*Nx*Ny] = vx*vx;
+
 }
- 
+
+
 
 __kernel void debye_wolf_gauss(__global cfloat_t * Ex,
 						 __global cfloat_t * Ey,
@@ -244,6 +265,7 @@ __kernel void debye_wolf_slit(__global cfloat_t * Ex,
 __kernel void precalculate_I(__write_only image2d_t output_re,
 							 __write_only image2d_t output_im,
 							 const float lam,
+							 const float n0,
 							 const float Rmax,
 							 const float Zmax,
 							 __constant float* alphas,
@@ -257,7 +279,7 @@ __kernel void precalculate_I(__write_only image2d_t output_re,
 
   
   float kr = 2.f*M_PI/lam*j*Rmax/(Nrad-1);
-  float kz = 2.f*M_PI/lam*i*Zmax/(Nz-1);
+  float kz = 2.f*M_PI/lam*i*Zmax/(Nz-1)/n0;
 
   cfloat_t I0 = (cfloat_t)(0.f,0.f);
   cfloat_t I1 = (cfloat_t)(0.f,0.f);

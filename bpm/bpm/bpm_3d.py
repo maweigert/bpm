@@ -231,7 +231,7 @@ def _bpm_3d(size,
                            plane_g.data,h_g.data)
 
 
-
+        #a =  dn_g.sum()
         if return_scattering:
             scatter_cross_sec_g[i+1] = reduce_kernel(plane_g,
                                                      scatter_weights_g,

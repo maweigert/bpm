@@ -29,7 +29,7 @@ def absPath(myPath):
 
 
 
-def psf_cylindrical(shape,units,lam,NA, n_integration_steps = 100):
+def focus_field_cylindrical(shape,units,lam,NA, n0=1., n_integration_steps = 100):
     """returns psf of cylindrical lerns with given NA
     """
 
@@ -39,7 +39,7 @@ def psf_cylindrical(shape,units,lam,NA, n_integration_steps = 100):
     Nx, Ny, Nz = shape
     dx, dy, dz = units
 
-    alpha = np.arcsin(NA)
+    alpha = np.arcsin(NA/n0)
     
     u_g = OCLArray.empty((Nz,Ny),np.float32)
     ex_g = OCLArray.empty((Nz,Ny),np.complex64)
@@ -50,7 +50,9 @@ def psf_cylindrical(shape,units,lam,NA, n_integration_steps = 100):
                  ex_g.data,u_g.data,
                  np.float32(-dy*(Ny-1)/2.),np.float32(dy*(Ny-1)/2.),
                  np.float32(-dz*(Nz-1)/2.),np.float32(dz*(Nz-1)/2.),
-                 np.float32(lam),np.float32(alpha))
+                 np.float32(lam),
+                 np.float32(n0),
+                 np.float32(alpha))
 
     u = np.array(np.repeat(u_g.get()[...,np.newaxis],Nx,axis=-1))
     ex = np.array(np.repeat(ex_g.get()[...,np.newaxis],Nx,axis=-1))
@@ -62,22 +64,6 @@ def psf_cylindrical(shape,units,lam,NA, n_integration_steps = 100):
     return u,ex
 
 
-def psf_cylindrical_focus_u0(shape,units,zfoc,lam,NA, n_integration_steps = 200):
-    """calculates initial plane u0 of a cylidrical lense beam focused at zfoc
-    shape = (Nx,Ny)
-    units = (dx,dy)
-    NA = e.g. 0.6
-    """
-
-    Nx, Ny = shape
-    dx, dy = units
-
-    
-    h , ex = psf_cylindrical((Nx,Ny,4),(dx,dy,2.*zfoc/3.),
-                              lam = lam,NA = NA)
-
-    # return ex
-    return ex[0,...].conjugate()
 
 def test_cylinder():
     

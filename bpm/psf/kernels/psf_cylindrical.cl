@@ -13,6 +13,7 @@ __kernel void psf_cylindrical(
 							  const float y1,const float y2,
 							  const float z1,const float z2,
 							  const float lam,
+							  const float n0,
 							  const float alpha){
 
   int i = get_global_id(0);
