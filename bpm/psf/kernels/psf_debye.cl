@@ -46,8 +46,9 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
   float y = y1+j*(y2-y1)/(Ny-1.f);
   float z = z1+k*(z2-z1)/(Nz-1.f);
 
-  float kr = 2.f*M_PI/lam*sqrt(x*x+y*y);
-  float kz = 2.f*M_PI/lam*z/n0;
+  float kr = 2.f*M_PI/lam*sqrt(x*x+y*y)*n0;
+  float kz = 2.f*M_PI/lam*z*n0;
+  //float kz = 2.f*M_PI/lam*z/n0;
   
   float phi = atan2(y,x); 
   
@@ -278,8 +279,8 @@ __kernel void precalculate_I(__write_only image2d_t output_re,
   int Nrad = get_global_size(1);
 
   
-  float kr = 2.f*M_PI/lam*j*Rmax/(Nrad-1);
-  float kz = 2.f*M_PI/lam*i*Zmax/(Nz-1)/n0;
+  float kr = 2.f*M_PI/lam*j*Rmax/(Nrad-1)*n0;
+  float kz = 2.f*M_PI/lam*i*Zmax/(Nz-1)*n0;
 
   cfloat_t I0 = (cfloat_t)(0.f,0.f);
   cfloat_t I1 = (cfloat_t)(0.f,0.f);

@@ -3,5 +3,5 @@
 
 
 from .psf_functions import *
-from .focus_field_debye import focus_field_debye
-from .focus_field_cylindrical import  focus_field_cylindrical
+from ._focus_fields_debye import focus_field_debye
+from ._focus_fields_cylindrical import  focus_field_cylindrical

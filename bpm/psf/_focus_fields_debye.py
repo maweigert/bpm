@@ -1,5 +1,5 @@
 """
-focvus field calulcations for high NA opbejctives via the Debye Wolf integral
+focvus field calulcations for high NA objectives via the Debye Wolf integral
 
 
 see e.g.

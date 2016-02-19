@@ -1,5 +1,6 @@
 """
 
+this is the main module defining 3d psf functions and initial focus fields
 
 
 mweigert@mpi-cbg.de
@@ -7,8 +8,8 @@ mweigert@mpi-cbg.de
 """
 
 
-from .focus_field_debye import focus_field_debye
-from .focus_field_cylindrical import focus_field_cylindrical
+from bpm.psf._focus_fields_debye import focus_field_debye
+from bpm.psf._focus_fields_cylindrical import focus_field_cylindrical
 
 import numpy as np
 
@@ -27,12 +28,11 @@ def psf_debye(shape,units,lam, NA, n0 = 1.,
     Journal of Modern Optics, 2011, 58, 5-6, 339
 
 
+    returns:
+    u, the (not normalized) intensity
 
-    returns the (not normalized) intensity u
-
-    or
+    or if return_all_fields = True
     u,ex,ey,ez
-    if return_field = True
 
     NA can be either a single number or an even length list of NAs (for bessel beams), e.g.
     NA = [.1,.2,.5,.6] lets light through the annulus .1<.2 and .5<.6
