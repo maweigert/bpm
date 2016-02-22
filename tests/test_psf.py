@@ -147,19 +147,21 @@ def test_lightsheet(NA_illum, NA_detect, n0=1.):
 
 if __name__ == '__main__':
 
-    pylab.figure(1)
+    pylab.figure()
     compare_with_file("data/psf_NA_0.8_dx_0.1_n_1.0.tif",
                       dx = 0.05, NA = .8,lam = .5, n= 1.)
-    pylab.figure(2)
+    pylab.figure()
     compare_with_file("data/psf_NA_0.8_dx_0.1_n_1.5.tif",
                       dx = 0.05, NA = .8,lam = .5, n= 1.5)
 
-    # pylab.figure(1)
-    # compare_with_theory((256,64,64),dx = .05,NA = 0.2, lam = .5, n=1.0)
-    # pylab.figure(2)
-    # compare_with_theory((256,64,64),dx = .05,NA = 0.2, lam = .5, n=1.3)
-    # pylab.figure(2)
-    # compare_with_theory((256,64,64),dx = .05,NA = 0.2, lam = .5, n=1.5)
+    pylab.figure()
+    compare_with_theory((256,64,64),dx = .05,NA = 0.2, lam = .5, n=1.0)
+    pylab.figure()
+    compare_with_theory((256,64,64),dx = .05,NA = 0.2, lam = .5, n=1.3)
+    pylab.figure()
+    compare_with_theory((256,64,64),dx = .05,NA = 0.2, lam = .5, n=1.5)
+
+    pylab.ioff()
 
 
     # compare_error((256,64,64),dx = .05,NAs = np.linspace(.1,.8,10),
