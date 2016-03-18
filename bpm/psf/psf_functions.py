@@ -13,9 +13,9 @@ from bpm.psf._focus_fields_cylindrical import focus_field_cylindrical
 
 import numpy as np
 
-__all__ =["psf_debye","psf_debye_u0","psf_lightsheet","psf_cylindrical","psf_cylindrical_u0"]
+__all__ =["psf","psf_u0","psf_lightsheet","psf_cylindrical","psf_cylindrical_u0"]
 
-def psf_debye(shape,units,lam, NA, n0 = 1.,
+def psf(shape,units,lam, NA, n0 = 1.,
               n_integration_steps = 200,
               return_field = False):
     """
@@ -56,7 +56,7 @@ def psf_lightsheet(shape,units,lam_illum,NA_illum, lam_detect, NA_detect, n0 = 1
     """
     """
 
-    u_detect= psf_debye(shape = shape, units = units,
+    u_detect= psf(shape = shape, units = units,
                          lam = lam_detect,
                          NA = NA_detect,
                          n0 = n0,
@@ -64,7 +64,7 @@ def psf_lightsheet(shape,units,lam_illum,NA_illum, lam_detect, NA_detect, n0 = 1
 
 
 
-    u_illum= psf_debye(shape = shape[::-1],
+    u_illum= psf(shape = shape[::-1],
                        units = units[::-1],
                          lam = lam_illum,
                          NA = NA_illum,
@@ -79,17 +79,20 @@ def psf_lightsheet(shape,units,lam_illum,NA_illum, lam_detect, NA_detect, n0 = 1
 
 
 
-def psf_debye_u0(shape,units,zfoc,lam,NA, n0, n_integration_steps = 200):
+def psf_u0(shape,units,zfoc,lam,NA, n0, n_integration_steps = 200):
     """calculates initial plane u0 of a beam focused at zfoc
     shape = (Nx,Ny)
     units = (dx,dy)
     NAs = e.g. (0,.6)
     """
+    Nx, Ny = shape
+    dx, dy = units
 
-    u, ex, ey, ez = psf_debye((Nx,Ny,4),(dx,dy,zfoc/2.),
+    u, ex, ey, ez = psf((Nx,Ny,4),(dx,dy,zfoc/2.),
                               n0 = n0,
                               lam = lam,NA = NA,
-                              n_integration_steps= n_integration_steps)
+                              n_integration_steps= n_integration_steps,
+                        return_field=True)
     # return ex[0,...]
     #FIXME
     return ex[0,...].conjugate()

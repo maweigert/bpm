@@ -8,7 +8,7 @@ import numpy as np
 import numpy.testing as npt
 from scipy.special import jn
 
-from bpm import psf_debye, psf_lightsheet
+from bpm import psf, psf_lightsheet
 from spimagine import read3dTiff
 
 import pylab
@@ -57,7 +57,7 @@ def compare_with_file(fname,dx, NA,lam,n):
     u1 = read3dTiff(fname)
 
     Nz,Ny,Nx = u1.shape
-    u2 = psf_debye((Nx, Ny, Nz), (dx,) * 3, lam, NA, n0=n)
+    u2 = psf((Nx, Ny, Nz), (dx,) * 3, lam, NA, n0=n)
 
     u1 *= 1./np.amax(u1)
     u2 *= 1./np.amax(u2)
@@ -86,7 +86,7 @@ def compare_with_file(fname,dx, NA,lam,n):
 def compare_with_theory(shape, dx, NA,lam,n):
 
     Nz,Ny,Nx = shape
-    u2 = psf_debye((Nx, Ny, Nz), (dx,) * 3, lam, NA, n0=n)
+    u2 = psf((Nx, Ny, Nz), (dx,) * 3, lam, NA, n0=n)
 
     u2 *= 1./np.amax(u2)
 
@@ -115,7 +115,7 @@ def compare_with_theory(shape, dx, NA,lam,n):
 
 def _get_error(shape, dx, NA,lam,n):
     Nz,Ny,Nx = shape
-    u2 = psf_debye((Nx, Ny, Nz), (dx,) * 3, lam, NA, n0=n)
+    u2 = psf((Nx, Ny, Nz), (dx,) * 3, lam, NA, n0=n)
     u2 *= 1./np.amax(u2)
     x = dx*(np.arange(Nx)-Nx/2)
     z = dx*(np.arange(Nz)-Nz/2)
