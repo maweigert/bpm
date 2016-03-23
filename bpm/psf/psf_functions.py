@@ -22,6 +22,8 @@ def psf(shape,units,lam, NA, n0 = 1.,
     calculates the psf for a perfect, aberration free optical system
     via the vectorial debye diffraction integral
 
+    the psf is centered at a grid of given size with voxelsizes units
+
     see
     Matthew R. Foreman, Peter Toeroek,
     Computational methods in vectorial imaging,
@@ -31,7 +33,7 @@ def psf(shape,units,lam, NA, n0 = 1.,
     returns:
     u, the (not normalized) intensity
 
-    or if return_all_fields = True
+    or if return_field = True
     u,ex,ey,ez
 
     NA can be either a single number or an even length list of NAs (for bessel beams), e.g.
@@ -79,7 +81,7 @@ def psf_lightsheet(shape,units,lam_illum,NA_illum, lam_detect, NA_detect, n0 = 1
 
 
 
-def psf_u0(shape,units,zfoc,lam,NA, n0, n_integration_steps = 200):
+def psf_u0(shape,units,zfoc,lam,NA, n0 = 1., n_integration_steps = 200):
     """calculates initial plane u0 of a beam focused at zfoc
     shape = (Nx,Ny)
     units = (dx,dy)
@@ -88,14 +90,14 @@ def psf_u0(shape,units,zfoc,lam,NA, n0, n_integration_steps = 200):
     Nx, Ny = shape
     dx, dy = units
 
-    u, ex, ey, ez = psf((Nx,Ny,4),(dx,dy,zfoc/2.),
+    u, ex, ey, ez = psf((Nx,Ny,4),(dx,dy,zfoc/1.5),
                               n0 = n0,
                               lam = lam,NA = NA,
                               n_integration_steps= n_integration_steps,
                         return_field=True)
     # return ex[0,...]
     #FIXME
-    return ex[0,...].conjugate()
+    return ex[0,...]
 
 def psf_cylindrical(shape,units,lam,NA, n0=1.,
                     return_field = False,
@@ -104,7 +106,8 @@ def psf_cylindrical(shape,units,lam,NA, n0=1.,
     """
     u, ex = focus_field_cylindrical(shape = shape, units = units,
                                    lam = lam, NA = NA, n0 = n0,
-                                   n_integration_steps = n_integration_steps)
+                                   n_integration_steps = n_integration_steps,
+                                    )
 
 
     if return_field:
@@ -125,7 +128,8 @@ def psf_cylindrical_u0(shape,units,zfoc,lam,NA, n0=1.,  n_integration_steps = 20
 
 
     u , ex = psf_cylindrical(shape = (Nx,Ny,4),units = (dx,dy,2.*zfoc/3.),
-                              lam = lam,NA = NA,n0=n0)
+                              lam = lam,NA = NA,n0=n0,
+                             return_field=True)
 
     # return ex
     return ex[0,...].conjugate()

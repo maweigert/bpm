@@ -74,6 +74,7 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     alphas = np.arcsin(np.array(NA)/n0)
     assert len(alphas)%2 ==0
 
+    # as we assume the psf to be symmetric, we just have to calculate each octant
     Nx = (Nx0+1)/2
     Ny = (Ny0+1)/2
     Nz = (Nz0+1)/2
@@ -90,9 +91,9 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     p.run_kernel("debye_wolf",u_g.shape[::-1],None,
                  ex_g.data,ey_g.data,ez_g.data, u_g.data,
                  np.float32(1.),np.float32(0.),
-                 np.float32(0.),np.float32(dx*Nx),
-                 np.float32(0.),np.float32(dy*Ny),
-                 np.float32(0.),np.float32(dz*Nz),
+                 np.float32(0.5*dx),np.float32(dx*.5*(Nx0-1)),
+                 np.float32(0.5*dy),np.float32(dy*.5*(Ny0-1)),
+                 np.float32(0.5*dz),np.float32(dz*.5*(Nz0-1)),
                  np.float32(lam),
                  np.float32(n0),
                  alpha_g.data, np.int32(len(alphas)))
@@ -109,19 +110,35 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     ey_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
     ez_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
 
-    sx = [slice(0,Nx),slice(Nx0-Nx0/2,Nx0)]
-    sy = [slice(0,Ny),slice(Ny0-Ny0/2,Ny0)]
-    sz = [slice(0,Nz),slice(Nz0-Nz0/2,Nz0)]
+    # sx = [slice(0,Nx),slice(Nx0-Nx0/2,Nx0)]
+    # sy = [slice(0,Ny),slice(Ny0-Ny0/2,Ny0)]
+    # sz = [slice(0,Nz),slice(Nz0-Nz0/2,Nz0)]
 
     sx = [slice(0,Nx),slice(Nx0-Nx,Nx0)]
     sy = [slice(0,Ny),slice(Ny0-Ny,Ny0)]
     sz = [slice(0,Nz),slice(Nz0-Nz,Nz0)]
 
+    # spreading the calculated octant to the full volume
     for i,j,k in itertools.product([0,1],[0,1],[0,1]):
         u_all[sz[1-i],sy[1-j],sx[1-k]] = u[::(-1)**i,::(-1)**j,::(-1)**k]
-        ex_all[sz[1-i],sy[1-j],sx[1-k]] = ex[::(-1)**i,::(-1)**j,::(-1)**k]
-        ey_all[sz[1-i],sy[1-j],sx[1-k]] = ey[::(-1)**i,::(-1)**j,::(-1)**k]
-        ez_all[sz[1-i],sy[1-j],sx[1-k]] = ez[::(-1)**i,::(-1)**j,::(-1)**k]
+        # if i ==1:
+        #     ex_all[sz[1-i],sy[1-j],sx[1-k]] = ex[::(-1)**i,::(-1)**j,::(-1)**k]
+        #     ey_all[sz[1-i],sy[1-j],sx[1-k]] = ey[::(-1)**i,::(-1)**j,::(-1)**k]
+        #     ez_all[sz[1-i],sy[1-j],sx[1-k]] = ez[::(-1)**i,::(-1)**j,::(-1)**k]
+        # else:
+        #     print "conjugate!"
+        #     ex_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ex[::(-1)**i,::(-1)**j,::(-1)**k])
+        #     ey_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ey[::(-1)**i,::(-1)**j,::(-1)**k])
+        #     ez_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ez[::(-1)**i,::(-1)**j,::(-1)**k])
+        if i ==1:
+            ex_all[sz[1-i],sy[1-j],sx[1-k]] = ex[::(-1)**i,::(-1)**j,::(-1)**k]
+            ey_all[sz[1-i],sy[1-j],sx[1-k]] = ey[::(-1)**i,::(-1)**j,::(-1)**k]
+            ez_all[sz[1-i],sy[1-j],sx[1-k]] = ez[::(-1)**i,::(-1)**j,::(-1)**k]
+
+        else:
+            ex_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ex[::(-1)**i,::(-1)**j,::(-1)**k])
+            ey_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ey[::(-1)**i,::(-1)**j,::(-1)**k])
+            ez_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ez[::(-1)**i,::(-1)**j,::(-1)**k])
 
         
     return u_all, ex_all, ey_all, ez_all

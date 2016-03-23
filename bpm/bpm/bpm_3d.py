@@ -130,7 +130,7 @@ def _bpm_3d(size,
     kxs = 2.*np.pi*np.fft.fftfreq(Nx,dx)
     kys = 2.*np.pi*np.fft.fftfreq(Ny,dy)
 
-    KY, KX = np.meshgrid(kxs,kys, indexing= "ij")
+    KY, KX = np.meshgrid(kys,kxs, indexing= "ij")
 
     #H0 = np.sqrt(0.j+n0**2*k0**2-KX**2-KY**2)
     H0 = np.sqrt(n0**2*k0**2-KX**2-KY**2)

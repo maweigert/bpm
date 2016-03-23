@@ -33,7 +33,7 @@ def focus_field_cylindrical(shape,units,lam,NA, n0=1., n_integration_steps = 100
     """returns psf of cylindrical lerns with given NA
     """
 
-    p = OCLProgram(absPath("psf_cylindrical.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+    p = OCLProgram(absPath("kernels/psf_cylindrical.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
 
     
     Nx, Ny, Nz = shape
