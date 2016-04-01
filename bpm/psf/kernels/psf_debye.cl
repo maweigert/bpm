@@ -52,9 +52,9 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
   
   float phi = atan2(y,x); 
   
-  cfloat_t I0 = (cfloat_t)(0.f,0.f);
-  cfloat_t I1 = (cfloat_t)(0.f,0.f);
-  cfloat_t I2 = (cfloat_t)(0.f,0.f);
+  cfloat_t I0 = cfloat_new(0.f,0.f);
+  cfloat_t I1 = cfloat_new(0.f,0.f);
+  cfloat_t I2 = cfloat_new(0.f,0.f);
 
 
   // simple traziodal rule
@@ -70,7 +70,7 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
 	  float t = alpha1 + i_t *dt;
 	  float co = cos(t);
 	  float si = sin(t);
-	  cfloat_t phase = (cfloat_t)(cos(kz*co),sin(kz*co));
+	  cfloat_t phase = cfloat_new(cos(kz*co),sin(kz*co));
 
 	  float prefac = ((t==alpha1)||(t==alpha2))?.5f:1.f;
 
@@ -86,7 +86,7 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
 
   cfloat_t ex = Ex0*(I0+I2*cos(2.f*phi))+Ey0*I2*sin(2.f*phi);
   cfloat_t ey = Ey0*(I0-I2*cos(2.f*phi))+Ex0*I2*sin(2.f*phi);
-  cfloat_t ez = cfloat_mul((cfloat_t)(0.f,-2.f),I1)*(Ex0*cos(phi)+Ey0*sin(phi));
+  cfloat_t ez = cfloat_mul(cfloat_new(0.f,-2.f),I1)*(Ex0*cos(phi)+Ey0*sin(phi));
 
   float vx = cfloat_abs(ex);
   float vy = cfloat_abs(ey);
@@ -209,9 +209,9 @@ __kernel void debye_wolf_gauss(__global cfloat_t * Ex,
 
   float phi = atan2(y,x);
 
-  cfloat_t I0 = (cfloat_t)(0.f,0.f);
-  cfloat_t I1 = (cfloat_t)(0.f,0.f);
-  cfloat_t I2 = (cfloat_t)(0.f,0.f);
+  cfloat_t I0 = cfloat_new(0.f,0.f);
+  cfloat_t I1 = cfloat_new(0.f,0.f);
+  cfloat_t I2 = cfloat_new(0.f,0.f);
 
   float alpha_max = alphas[Nalphas-1];
   float exp_prefac = -.5f/alpha_max/alpha_max/sig/sig;
@@ -229,7 +229,7 @@ __kernel void debye_wolf_gauss(__global cfloat_t * Ex,
 	  float t = alpha1 + i_t *dt;
 	  float co = cos(t);
 	  float si = sin(t);
-	  cfloat_t phase = (cfloat_t)(cos(kz*co),sin(kz*co));
+	  cfloat_t phase = cfloat_new(cos(kz*co),sin(kz*co));
 
 	  float prefac = ((t==alpha1)||(t==alpha2))?.5f:1.f;
 
@@ -244,7 +244,7 @@ __kernel void debye_wolf_gauss(__global cfloat_t * Ex,
 
   cfloat_t ex = Ex0*(I0+I2*cos(2.f*phi))+Ey0*I2*sin(2.f*phi);
   cfloat_t ey = Ey0*(I0-I2*cos(2.f*phi))+Ex0*I2*sin(2.f*phi);
-  cfloat_t ez = cfloat_mul((cfloat_t)(0.f,-2.f),I1)*(Ex0*cos(phi)+Ey0*sin(phi));
+  cfloat_t ez = cfloat_mul(cfloat_new(0.f,-2.f),I1)*(Ex0*cos(phi)+Ey0*sin(phi));
 
   float vx = cfloat_abs(ex);
   float vy = cfloat_abs(ey);
@@ -290,9 +290,9 @@ __kernel void debye_wolf_slit(__global cfloat_t * Ex,
   
   float phi = atan2(y,x); 
   
-  cfloat_t I0 = (cfloat_t)(0.f,0.f);
-  cfloat_t I1 = (cfloat_t)(0.f,0.f);
-  cfloat_t I2 = (cfloat_t)(0.f,0.f);
+  cfloat_t I0 = cfloat_new(0.f,0.f);
+  cfloat_t I1 = cfloat_new(0.f,0.f);
+  cfloat_t I2 = cfloat_new(0.f,0.f);
 
 
   // simple traziodal rule
@@ -308,7 +308,7 @@ __kernel void debye_wolf_slit(__global cfloat_t * Ex,
 	  float t = alpha1 + i_t *dt;
 	  float co = cos(t);
 	  float si = sin(t);
-	  cfloat_t phase = (cfloat_t)(cos(kz*co),sin(kz*co));
+	  cfloat_t phase = cfloat_new(cos(kz*co),sin(kz*co));
 
 	  float prefac = ((t==alpha1)||(t==alpha2))?.5f:1.f;
 
@@ -323,7 +323,7 @@ __kernel void debye_wolf_slit(__global cfloat_t * Ex,
 
   cfloat_t ex = Ex0*(I0+I2*cos(2.f*phi))+Ey0*I2*sin(2.f*phi);
   cfloat_t ey = Ey0*(I0-I2*cos(2.f*phi))+Ex0*I2*sin(2.f*phi);
-  cfloat_t ez = cfloat_mul((cfloat_t)(0.f,-2.f),I1)*(Ex0*cos(phi)+Ey0*sin(phi));
+  cfloat_t ez = cfloat_mul(cfloat_new(0.f,-2.f),I1)*(Ex0*cos(phi)+Ey0*sin(phi));
 
   float vx = cfloat_abs(ex);
   float vy = cfloat_abs(ey);
@@ -357,9 +357,9 @@ __kernel void precalculate_I(__write_only image2d_t output_re,
   float kr = 2.f*M_PI/lam*j*Rmax/(Nrad-1)*n0;
   float kz = 2.f*M_PI/lam*i*Zmax/(Nz-1)*n0;
 
-  cfloat_t I0 = (cfloat_t)(0.f,0.f);
-  cfloat_t I1 = (cfloat_t)(0.f,0.f);
-  cfloat_t I2 = (cfloat_t)(0.f,0.f);
+  cfloat_t I0 = cfloat_new(0.f,0.f);
+  cfloat_t I1 = cfloat_new(0.f,0.f);
+  cfloat_t I2 = cfloat_new(0.f,0.f);
 
 
   // simple traziodal rule
@@ -375,7 +375,7 @@ __kernel void precalculate_I(__write_only image2d_t output_re,
 	  float t = alpha1 + i_t *dt;
 	  float co = cos(t);
 	  float si = sin(t);
-	  cfloat_t phase = (cfloat_t)(cos(kz*co),sin(kz*co));
+	  cfloat_t phase = cfloat_new(cos(kz*co),sin(kz*co));
 
 	  float prefac = ((t==alpha1)||(t==alpha2))?.5f:1.f;
 
@@ -440,9 +440,9 @@ __kernel void assemble_I(__read_only image2d_t input_re,
   float4 I_re = read_imagef(input_re,sampler,(float2)(fabs(z)/Zmax,r/Rmax));
   float4 I_im = read_imagef(input_im,sampler,(float2)(fabs(z)/Zmax,r/Rmax));
   
-  cfloat_t I0 = (cfloat_t)(I_re.x,I_im.x);
-  cfloat_t I1 = (cfloat_t)(I_re.y,I_im.y);
-  cfloat_t I2 = (cfloat_t)(I_re.z,I_im.z);
+  cfloat_t I0 = cfloat_new(I_re.x,I_im.x);
+  cfloat_t I1 = cfloat_new(I_re.y,I_im.y);
+  cfloat_t I2 = cfloat_new(I_re.z,I_im.z);
 
   // conjugate if z is negative 
   if (z<0){
@@ -454,7 +454,7 @@ __kernel void assemble_I(__read_only image2d_t input_re,
   
   cfloat_t ex = Ex0*(I0+I2*cos(2.f*phi))+Ey0*I2*sin(2.f*phi);
   cfloat_t ey = Ey0*(I0-I2*cos(2.f*phi))+Ex0*I2*sin(2.f*phi);
-  cfloat_t ez = cfloat_mul((cfloat_t)(0.f,-2.f),I1)*(Ex0*cos(phi)+Ey0*sin(phi));
+  cfloat_t ez = cfloat_mul(cfloat_new(0.f,-2.f),I1)*(Ex0*cos(phi)+Ey0*sin(phi));
 
   float vx = cfloat_abs(ex);
   float vy = cfloat_abs(ey);
