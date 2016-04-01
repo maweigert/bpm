@@ -1,6 +1,6 @@
- #include <pyopencl-complex.h>
+#include <pyopencl-complex.h>
 
-  #define M_PI 3.14159265358979f
+#define M_PI 3.14159265358979f
 
 
 __kernel void mult(__global cfloat_t* a,
@@ -30,28 +30,13 @@ __kernel void mult_dn(__global cfloat_t* input,
   int disty = min(Ny-j-1,j);
   int dist = min(distx,disty);
 
-  float absorb_val = (dist<absorb)?0.5*(1-cos(M_PI*dist/absorb)):1.;
+  float absorb_val = (dist<absorb)?0.5f*(1-cos(M_PI*dist/absorb)):1.f;
 
   cfloat_t dPhase = cfloat_new(cos(dnDiff),sin(dnDiff));
 
   cfloat_t res = cfloat_mul(input[i+Nx*j],dPhase);
 
-
-
-
-
-
-  res = cfloat_mul(res,cfloat_new(absorb_val,0.));
-
-  //res = (cfloat_t)(absorb_val,0.);
-  //res = (cfloat_t)(distx,disty);
-
-  //if (i+j==0)
-  //  printf("%d\n",absorb);
-
-
-  //if (absorb_val<.5)
-  //  printf("absorb %d %d: %.2f %.2f \n",i,j,res.x,res.y);
+  res = cfloat_mul(res,cfloat_new(absorb_val,0.f));
 
   input[i+Nx*j] = res;
 
@@ -76,28 +61,14 @@ __kernel void mult_dn_half(__global cfloat_t* input,
   int disty = min(Ny-j-1,j);
   int dist = min(distx,disty);
 
-  float absorb_val = (dist<absorb)?0.5*(1-cos(M_PI*dist/absorb)):1.;
+  float absorb_val = (dist<absorb)?0.5f*(1.f-cos(M_PI*dist/absorb)):1.f;
 
-  cfloat_t dPhase = (cfloat_t)(cos(dnDiff),sin(dnDiff));
+  cfloat_t dPhase = cfloat_new(cos(dnDiff),sin(dnDiff));
 
   cfloat_t res = cfloat_mul(input[i+Nx*j],dPhase);
 
+  res = cfloat_mul(res,cfloat_new(absorb_val,0.f));
 
-
-
-
-
-  res = cfloat_mul(res,(cfloat_t)(absorb_val,0.));
-
-  //res = (cfloat_t)(absorb_val,0.);
-  //res = (cfloat_t)(distx,disty);
-
-  //if (i+j==0)
-  //  printf("%d\n",absorb);
-
-
-  //if (absorb_val<.5)
-  //  printf("absorb %d %d: %.2f %.2f \n",i,j,res.x,res.y);
 
   input[i+Nx*j] = res;
 
@@ -114,7 +85,7 @@ __kernel void mult_dn_complex(__global cfloat_t* input,
   int j = get_global_id(1);
   int Nx = get_global_size(0);
 
-  cfloat_t dnDiff = cfloat_mul(cfloat_new(0,-unit_k),dn[i+Nx*j+stride]);
+  cfloat_t dnDiff = cfloat_mul(cfloat_new(0.f,-unit_k),dn[i+Nx*j+stride]);
 
   cfloat_t dPhase = cfloat_exp(dnDiff);
 
@@ -146,7 +117,7 @@ __kernel void mult_dn_image(__global cfloat_t* input,
   input[i+Nx2*j] = cfloat_mul(input[i+Nx2*j],dPhase);
 
 
-  // input[i+Nx2*j] = cfloat_new(dn_val,0.);
+
   
 }
 

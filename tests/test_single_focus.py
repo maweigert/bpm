@@ -17,7 +17,10 @@ def test_focus(size, units, NA = .3, n0 = 1.):
     _,u_debye,  _, _ = psf(size, units, n0= n0, lam=lam, NA=NA, return_field = True)
 
     u0 = u_debye[0]
-    u0 = psf_u0(size[:2],units[:2],zfoc = .5*units[-1]*(size[-1]-1), lam = lam, NA = NA)
+    u0 = psf_u0(size[:2],units[:2],
+                zfoc = .5*units[-1]*(size[-1]-1),
+                n0 = n0,
+                lam = lam, NA = NA)
 
     u = bpm_3d(size,units= units, lam = lam,
                    n0 = n0,
@@ -35,7 +38,7 @@ if __name__ == '__main__':
 
     dx ,dy, dz = .2, .1, .1
     NA = .6
-    n0 = 1.
+    n0 = 1.3
 
 
     u_bpm,u_anal = test_focus((Nx,Ny,Nz),(dx,dy,dz),NA = NA, n0 = n0)

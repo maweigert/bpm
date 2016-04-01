@@ -19,7 +19,11 @@ def test_focus(size, units, NA = .3, n0 = 1.):
     _,u_debye,  _, _ = psf(size, units, n0= n0, lam=lam, NA=NA, return_field = True)
 
     u0 = u_debye[0]
-    u0 = psf_u0(size[:2],units[:2],zfoc = .5*units[-1]*(size[-1]-1), lam = lam, NA = NA)
+    u0 = psf_u0(size[:2],units[:2],
+                zfoc = .5*units[-1]*(size[-1]-1),
+                n0 = n0,
+                lam = lam,
+                NA = NA)
 
     u = bpm_3d(size,units= units, lam = lam,
                    n0 = n0,
@@ -32,7 +36,7 @@ if __name__ == '__main__':
 
 
     Nx  = 256
-    Ny = 512
+    Ny = 256
     Nz = 256
 
     dx, dy, dz = .1, .1, .1
@@ -43,7 +47,7 @@ if __name__ == '__main__':
 
     u_bpm, u_anal = [],[]
     for NA,n0 in zip(NAs, n0s):
-        u1,u2 = test_focus((Nx,Ny,Nz),NA = NA, n0 = n0)
+        u1,u2 = test_focus((Nx,Ny,Nz),(dx,dy,dz), NA = NA, n0 = n0)
         u_bpm.append(u1)
         u_anal.append(u2)
 
@@ -57,40 +61,40 @@ if __name__ == '__main__':
 
     pylab.figure(1)
     pylab.clf()
-    for i in range(n):
+    for i, (u1, u2) in enumerate(zip(u_anal,u_bpm)):
         pylab.subplot(n,1,i+1)
-        pylab.plot(np.real(u_anal[i][:,Ny/2,Nx/2]), "-",c = col[1],  label="analy")
-        pylab.plot(np.real(u_bpm[i][:,Ny/2,Nx/2]), ".:", c = col[0], label="bpm")
+        pylab.plot(np.real(u1[:,Ny/2,Nx/2]), "-",c = col[1],  label="analy")
+        pylab.plot(np.real(u2[:,Ny/2,Nx/2]), ".:", c = col[0], label="bpm")
 
         pylab.legend()
         pylab.title("NA = %s, n0 = %.2f"%(NAs[i],n0s[i]))
 
     pylab.figure(2)
     pylab.clf()
-    for i in range(n):
+    for i, (u1, u2) in enumerate(zip(u_anal,u_bpm)):
         pylab.subplot(n,2,2*i+1)
-        pylab.imshow(np.real(u_anal[i][:,Ny/2,:]), cmap = "hot")
+        pylab.imshow(np.real(u1[:,Ny/2,:]), cmap = "hot")
         pylab.grid("off")
         pylab.axis("off")
         pylab.title("anal,  NA = %s, n0 = %.2f"%(NAs[i],n0s[i]))
 
         pylab.subplot(n,2,2*i+2)
-        pylab.imshow(np.real(u_bpm[i][:,Ny/2,:]), cmap = "hot")
+        pylab.imshow(np.real(u2[:,Ny/2,:]), cmap = "hot")
         pylab.grid("off")
         pylab.axis("off")
         pylab.title("bpm,  NA = %s, n0 = %.2f"%(NAs[i],n0s[i]))
 
     pylab.figure(3)
     pylab.clf()
-    for i in range(n):
+    for i, (u1, u2) in enumerate(zip(u_anal,u_bpm)):
         pylab.subplot(n,2,2*i+1)
-        pylab.imshow(np.abs(u_anal[i][Nz/2,...]), cmap = "hot")
+        pylab.imshow(np.abs(u1[Nz/2,...]), cmap = "hot")
         pylab.grid("off")
         pylab.axis("off")
         pylab.title("anal,  NA = %s, n0 = %.2f"%(NAs[i],n0s[i]))
 
         pylab.subplot(n,2,2*i+2)
-        pylab.imshow(np.abs(u_bpm[i][Nz/2,...]), cmap = "hot")
+        pylab.imshow(np.abs(u2[Nz/2,...]), cmap = "hot")
         pylab.grid("off")
         pylab.axis("off")
         pylab.title("bpm,  NA = %s, n0 = %.2f"%(NAs[i],n0s[i]))
@@ -98,15 +102,15 @@ if __name__ == '__main__':
 
     pylab.figure(4)
     pylab.clf()
-    for i in range(n):
+    for i, (u1, u2) in enumerate(zip(u_anal,u_bpm)):
         pylab.subplot(n,2,2*i+1)
-        pylab.imshow(np.abs(u_anal[i][:,Ny/2,:]), cmap = "hot")
+        pylab.imshow(np.abs(u1[:,Ny/2,:]), cmap = "hot")
         pylab.grid("off")
         pylab.axis("off")
         pylab.title("anal,  NA = %s, n0 = %.2f"%(NAs[i],n0s[i]))
 
         pylab.subplot(n,2,2*i+2)
-        pylab.imshow(np.abs(u_bpm[i][:,Ny/2,:]), cmap = "hot")
+        pylab.imshow(np.abs(u2[:,Ny/2,:]), cmap = "hot")
         pylab.grid("off")
         pylab.axis("off")
         pylab.title("bpm,  NA = %s, n0 = %.2f"%(NAs[i],n0s[i]))
