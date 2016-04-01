@@ -42,6 +42,9 @@ def test_bessel(n,x):
     return res_g.get()
 
 
+
+
+
 def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     """
     calculates the focus_field for a perfect, aberration free optical system
@@ -142,6 +145,54 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
 
         
     return u_all, ex_all, ey_all, ez_all
+
+
+def focus_field_debye_at(x,y,z,lam, NA, n0 = 1., n_integration_steps = 200):
+    """ the same as focus_field_debye but for the coordinates given in x, y, z (arrays of same shape)
+
+        slower than focus_field_debye as it doesnt assume the coordinates to be on a grid
+    """
+
+    print absPath("kernels/psf_debye.cl")
+    p = OCLProgram(absPath("kernels/psf_debye.cl"),
+                   build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+
+    if np.isscalar(NA):
+        NA = [0.,NA]
+
+    alphas = np.arcsin(np.array(NA)/n0)
+    assert len(alphas)%2 ==0
+
+    assert x.shape == y.shape == z.shape
+    dshape =x.shape
+    N = np.prod(dshape)
+
+    x_g = OCLArray.from_array(x.flatten().astype(np.float32))
+    y_g = OCLArray.from_array(y.flatten().astype(np.float32))
+    z_g = OCLArray.from_array(z.flatten().astype(np.float32))
+
+    u_g = OCLArray.empty(N,np.float32)
+    ex_g = OCLArray.empty(N,np.complex64)
+    ey_g = OCLArray.empty(N,np.complex64)
+    ez_g = OCLArray.empty(N,np.complex64)
+
+    alpha_g = OCLArray.from_array(alphas.astype(np.float32))
+
+    p.run_kernel("debye_wolf_at",(N,),None,
+                 x_g.data,y_g.data,z_g.data,
+                 ex_g.data,ey_g.data,ez_g.data, u_g.data,
+                 np.float32(1.),np.float32(0.),
+                 np.float32(lam),
+                 np.float32(n0),
+                 alpha_g.data, np.int32(len(alphas)))
+
+    u = u_g.get().reshape(dshape)
+    ex = ex_g.get().reshape(dshape)
+    ey = ey_g.get().reshape(dshape)
+    ez = ez_g.get().reshape(dshape)
+
+    return u, ex, ey, ez
+
 
 def focus_field_debye_gauss(shape,units,lam,NAs, sig = 1./np.sqrt(2), n_integration_steps = 200):
     """
@@ -430,7 +481,17 @@ def test_debye():
     return u,u2
 
 if __name__ == '__main__':
-    pass
+
+
+    x = np.linspace(-10,10,256)
+    Y,X = np.meshgrid(x,x,indexing= "ij")
+    w = .3
+    z0 = -10.
+
+    X,Z = np.cos(w)*X, z0+np.sin(w)*X
+
+
+    u0, ex,ey,ez = focus_field_debye_at(X,Y,Z,lam=.5, NA = .5)
 
     # u,u2 = test_debye() 
 

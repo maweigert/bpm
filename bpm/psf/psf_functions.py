@@ -19,15 +19,31 @@ def psf(shape,units,lam, NA, n0 = 1.,
               n_integration_steps = 200,
               return_field = False):
     """
-    calculates the psf for a perfect, aberration free optical system
+
+    Parameters
+    ----------
+    shape: Nx,Ny,Nz
+        the shape of the geometry
+    units: dx,dy,dz
+        the pixel sizes in microns
+    lam: float
+        the wavelength
+    NA
+    n0
+    n_integration_steps
+    return_field
+
+    Returns
+    -------
+
+    calculates the 3d psf for a perfect, aberration free optical system
     via the vectorial debye diffraction integral
 
     the psf is centered at a grid of given size with voxelsizes units
 
-    see
-    Matthew R. Foreman, Peter Toeroek,
-    Computational methods in vectorial imaging,
-    Journal of Modern Optics, 2011, 58, 5-6, 339
+
+
+    see [1]_
 
 
     returns:
@@ -39,6 +55,10 @@ def psf(shape,units,lam, NA, n0 = 1.,
     NA can be either a single number or an even length list of NAs (for bessel beams), e.g.
     NA = [.1,.2,.5,.6] lets light through the annulus .1<.2 and .5<.6
 
+    References
+    ----------
+
+    .. [1] Matthew R. Foreman, Peter Toeroek, *Computational methods in vectorial imaging*, Journal of Modern Optics, 2011, 58, 5-6, 339
 
     """
 
@@ -81,7 +101,7 @@ def psf_lightsheet(shape,units,lam_illum,NA_illum, lam_detect, NA_detect, n0 = 1
 
 
 
-def psf_u0(shape,units,zfoc,lam,NA, n0 = 1., n_integration_steps = 200):
+def psf_u0(shape,units,zfoc = 0,NA = .4,lam = .5, n0 = 1., n_integration_steps = 200):
     """calculates initial plane u0 of a beam focused at zfoc
     shape = (Nx,Ny)
     units = (dx,dy)

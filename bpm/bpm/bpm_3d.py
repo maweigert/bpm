@@ -48,7 +48,8 @@ def bpm_3d(size,
            return_full = True,
            absorbing_width = 0,
            use_fresnel_approx = False,
-           scattering_plane_ind = 0):
+           scattering_plane_ind = 0,
+           store_dn_as_half = False):
     """
     simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
 
@@ -73,7 +74,8 @@ def bpm_3d(size,
                        return_g = return_g,
                        absorbing_width = absorbing_width,
                        use_fresnel_approx = use_fresnel_approx,
-                       scattering_plane_ind =  scattering_plane_ind)
+                       scattering_plane_ind =  scattering_plane_ind,
+                       store_dn_as_half = store_dn_as_half)
     else:
         return _bpm_3d_split(size, units,
                              lam = lam,
@@ -85,7 +87,8 @@ def bpm_3d(size,
                              return_g = return_g,
                              absorbing_width = absorbing_width,
                              return_full = return_full,
-                             use_fresnel_approx = use_fresnel_approx)
+                             use_fresnel_approx = use_fresnel_approx,
+                             store_dn_as_half = store_dn_as_half)
 
 
 def _bpm_3d(size,
@@ -100,7 +103,8 @@ def _bpm_3d(size,
             return_full = True,
             use_fresnel_approx = False,
             absorbing_width = 0,
-            scattering_plane_ind = 0):
+            scattering_plane_ind = 0,
+            store_dn_as_half = False):
     """
     simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
 
@@ -136,7 +140,7 @@ def _bpm_3d(size,
     H0 = np.sqrt(n0**2*k0**2-KX**2-KY**2)
 
     if use_fresnel_approx:
-        H0  = 0.j+n0**2*k0-.5*(KX**2+KY**2)
+        H0  = 0.j+n0*k0-.5*(KX**2+KY**2)/n0/k0
 
 
     outsideInds = np.isnan(H0)
@@ -167,7 +171,10 @@ def _bpm_3d(size,
 
             else:
                 isComplexDn = False
-                dn_g = OCLArray.from_array(dn.astype(np.float32,copy= False))
+                if store_dn_as_half:
+                    dn_g = OCLArray.from_array(dn.astype(np.float16,copy= False))
+                else:
+                    dn_g = OCLArray.from_array(dn.astype(np.float32,copy= False))
 
     else:
         #dummy dn
@@ -247,8 +254,10 @@ def _bpm_3d(size,
 
                 kernel_str = "mult_dn_complex"
             else:
-
-                kernel_str = "mult_dn"
+                if dn_g.dtype.type == np.float16:
+                    kernel_str = "mult_dn_half"
+                else:
+                    kernel_str = "mult_dn"
 
 
             program.run_kernel(kernel_str,(Nx,Ny,),None,
@@ -302,7 +311,8 @@ def _bpm_3d_image(size,
             return_scattering = False,
             return_g = False,
             return_full_last = False,
-            use_fresnel_approx = False):
+            use_fresnel_approx = False,
+            ):
     """
     simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
 
@@ -500,7 +510,8 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                  return_full = True,
                  return_g = False,
                   absorbing_width = 0,
-                 use_fresnel_approx = False):
+                 use_fresnel_approx = False,
+                  store_dn_as_half = False):
     """
     same as bpm_3d but splits z into n_volumes pieces (e.g. if memory of GPU is not enough)
     """
@@ -512,8 +523,6 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
     if u0 is None:
         u0 = np.ones((subsample*Ny,subsample*Nx),np.complex64)
 
-    if dn is None:
-        dn = np.zeros((Nz,Ny,Nx),np.float32)
 
     if return_full:
         u = np.empty((Nz,Ny,Nx),np.complex64)
@@ -528,18 +537,24 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
     for i in range(n_volumes):
         i1,i2 = i*Nz2, np.clip((i+1)*Nz2,0,Nz)
         if i<n_volumes-1:
+            if dn is None:
+                dn_part = None
+            else:
+                dn_part = dn[i1:i2+1,:,:]
+
             res_part = _bpm_3d((Nx,Ny,i2-i1+1),
                                units = units,
                                lam = lam,
                                u0 = u0,
-                               dn = dn[i1:i2+1,:,:],
+                               dn = dn_part,
                                n0 = n0,
                                subsample = subsample,
                                return_full = return_full,
                                return_g = return_g,
                                absorbing_width = absorbing_width,
                                return_scattering = return_scattering,
-                               scattering_plane_ind = Nz2*i)
+                               scattering_plane_ind = Nz2*i,
+                               store_dn_as_half = store_dn_as_half)
 
 
             if return_scattering:
@@ -560,18 +575,24 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                 u0 = u_part
 
         else:
+            if dn is None:
+                dn_part = None
+            else:
+                dn_part = dn[i1:i2,:,:]
+
             res_part = _bpm_3d((Nx,Ny,i2-i1),
                                units = units,
                                lam = lam,
                                u0 = u0,
-                               dn = dn[i1:i2,:,:],
+                               dn = dn_part,
                                n0 = n0,
                                subsample = subsample,
                                return_full = return_full,
                                return_g = return_g,
                                absorbing_width = absorbing_width,
                                return_scattering = return_scattering,
-                               scattering_plane_ind = Nz2*i)
+                               scattering_plane_ind = Nz2*i,
+                               store_dn_as_half = store_dn_as_half)
 
             if return_scattering:
                 if return_g:
@@ -747,8 +768,8 @@ def test_slit():
     return u, dn, p
 
 
-def test_sphere():
-    Nx, Nz = 128,128
+def test_sphere(N = 128, **kwargs):
+    Nx, Nz = N,N
     dx, dz = .05, 0.05
 
     lam = .5
@@ -764,17 +785,20 @@ def test_sphere():
     Z,Y,X = np.meshgrid(z,y,x,indexing="ij")
     R = np.sqrt(X**2+Y**2+(Z-3.)**2)
     dn = .05*(R<1.)
-    
-    u, dn, p = bpm_3d((Nx,Nx,Nz),units= units,
+
+    c = StopWatch()
+    c.tic("bpm")
+
+    u = bpm_3d((Nx,Nx,Nz),units= units,
                       lam = lam,
                       dn = dn,
-                      subsample = 1,
-                      n_volumes = 1,
-                      return_scattering = True )
+                    **kwargs
+               )
 
-    
-    print np.sum(np.abs(u[1:,...]))
-    return u, dn,p
+    c.toc("bpm")
+    print c
+
+    return u
 
 def test_compare():
     Nx, Nz = 128,256
@@ -814,7 +838,7 @@ def test_compare():
 if __name__ == '__main__':
     # test_speed()
 
-    u, p = test_sphere()
+    u = test_sphere()
 
     # u1, u2 = test_compare()
 
