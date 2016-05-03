@@ -54,6 +54,7 @@ if __name__ == '__main__':
 
     import pylab
     import seaborn
+    pylab.ioff()
     col = seaborn.color_palette()
 
     n = len(u_bpm)

@@ -42,7 +42,7 @@ __kernel void psf_cylindrical(
 
   }
 
-  Ex[i+j*Ny] = (cfloat_t)(E_re,E_im);
+  Ex[i+j*Ny] = cfloat_new(E_re,E_im);
   
   I[i+j*Ny] = E_re*E_re+E_im*E_im;
   

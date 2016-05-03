@@ -1,7 +1,7 @@
 import os
 from setuptools import setup, find_packages
 
-setup(name='bpm',
+setup(name='beamy',
     version='0.1.1',
     description='beam propagation',
     url='',
@@ -10,9 +10,9 @@ setup(name='bpm',
     license='MIT',
     packages=['bpm'],
     install_requires=[
-        'numpy', 'scipy',
+        'numpy', 'scipy',"pyopencl>=2015.2.4"
     ],
 
-    package_data={"bpm":['psf/kernels/*','psf_integrals/*.cl',]},
+    package_data={"bpm":['psf/kernels/*.cl','bpm/kernels/*.cl',]},
 
 )

@@ -57,11 +57,11 @@ class _Bpm3d_OCL(_Bpm3d_Base):
 
 
 
-        self.reduce_kernel = OCLReductionKernel(
-        np.float32, neutral="0",
-            reduce_expr="a+b",
-            map_expr="weights[i]*cfloat_abs(field[i]-(i==0)*plain)*cfloat_abs(field[i]-(i==0)*plain)",
-            arguments="__global cfloat_t *field, __global float * weights,cfloat_t plain")
+        # self.reduce_kernel = OCLReductionKernel(
+        # np.float32, neutral="0",
+        #     reduce_expr="a+b",
+        #     map_expr="weights[i]*cfloat_abs(field[i]-(i==0)*plain)*cfloat_abs(field[i]-(i==0)*plain)",
+        #     arguments="__global cfloat_t *field, __global float * weights,cfloat_t plain")
 
     def _propagate_single(self, u0 = None,
                           return_full = True,

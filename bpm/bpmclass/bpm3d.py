@@ -61,10 +61,6 @@ class _Bpm3d_Base(object):
 
         self._setup_impl()
 
-
-
-
-
     def _setup(self, size, units, lam = .5, n0 = 1.,
               use_fresnel_approx = False):
         """
@@ -97,6 +93,7 @@ class _Bpm3d_Base(object):
         self._KY, self._KX = np.meshgrid(kxs,kys, indexing= "ij")
 
         self._H0 = np.sqrt(n0**2*self.k0**2-self._KX**2-self._KY**2)
+        #self._H0 = np.sqrt(0.j+n0**2*self.k0**2-self._KX**2-self._KY**2)
 
         if use_fresnel_approx:
             self._H0  = 0.j+n0**2*self.k0-.5*(self._KX**2+self._KY**2)

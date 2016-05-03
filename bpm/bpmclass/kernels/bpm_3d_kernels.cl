@@ -1,6 +1,6 @@
- #include <pyopencl-complex.h>
+#include <pyopencl-complex.h>
 
-  #define M_PI 3.14159265358979f
+#define M_PI 3.14159265358979f
 
 
 __kernel void mult(__global cfloat_t* a,
@@ -30,28 +30,46 @@ __kernel void mult_dn(__global cfloat_t* input,
   int disty = min(Ny-j-1,j);
   int dist = min(distx,disty);
 
-  float absorb_val = (dist<absorb)?0.5*(1-cos(M_PI*dist/absorb)):1.;
+  float absorb_val = (dist<absorb)?0.5f*(1-cos(M_PI*dist/absorb)):1.f;
 
-  cfloat_t dPhase = (cfloat_t)(cos(dnDiff),sin(dnDiff));
+  cfloat_t dPhase = cfloat_new(cos(dnDiff),sin(dnDiff));
 
   cfloat_t res = cfloat_mul(input[i+Nx*j],dPhase);
 
+  res = cfloat_mul(res,cfloat_new(absorb_val,0.f));
 
 
+  input[i+Nx*j] = res;
+
+}
 
 
+__kernel void mult_dn_half(__global cfloat_t* input,
+					  __global half * dn,const float unit_k,
+					  const int stride,
+					  const int absorb){
 
-  res = cfloat_mul(res,(cfloat_t)(absorb_val,0.));
-
-  //res = (cfloat_t)(absorb_val,0.);
-  //res = (cfloat_t)(distx,disty);
-
-  //if (i+j==0)
-  //  printf("%d\n",absorb);
+  int i = get_global_id(0);
+  int j = get_global_id(1);
+  int Nx = get_global_size(0);
+  int Ny = get_global_size(1);
 
 
-  //if (absorb_val<.5)
-  //  printf("absorb %d %d: %.2f %.2f \n",i,j,res.x,res.y);
+  float dn_val = vload_half(i+Nx*j+stride,dn);
+  float dnDiff = -unit_k*dn_val;
+
+  int distx = min(Nx-i-1,i);
+  int disty = min(Ny-j-1,j);
+  int dist = min(distx,disty);
+
+  float absorb_val = (dist<absorb)?0.5f*(1.f-cos(M_PI*dist/absorb)):1.f;
+
+  cfloat_t dPhase = cfloat_new(cos(dnDiff),sin(dnDiff));
+
+  cfloat_t res = cfloat_mul(input[i+Nx*j],dPhase);
+
+  res = cfloat_mul(res,cfloat_new(absorb_val,0.f));
+
 
   input[i+Nx*j] = res;
 
@@ -68,7 +86,7 @@ __kernel void mult_dn_complex(__global cfloat_t* input,
   int j = get_global_id(1);
   int Nx = get_global_size(0);
 
-  cfloat_t dnDiff = cfloat_mul((cfloat_t)(0,-unit_k),dn[i+Nx*j+stride]);
+  cfloat_t dnDiff = cfloat_mul(cfloat_new(0.f,-unit_k),dn[i+Nx*j+stride]);
 
   cfloat_t dPhase = cfloat_exp(dnDiff);
 
@@ -95,12 +113,12 @@ __kernel void mult_dn_image(__global cfloat_t* input,
 
   // dnDiff = -unit_k*dn_val*(1.f+.5f*dn_val/n0);
   
-  cfloat_t dPhase = (cfloat_t)(cos(dnDiff),sin(dnDiff));
+  cfloat_t dPhase = cfloat_new(cos(dnDiff),sin(dnDiff));
 
   input[i+Nx2*j] = cfloat_mul(input[i+Nx2*j],dPhase);
 
 
-  // input[i+Nx2*j] = (cfloat_t)(dn_val,0.);
+
   
 }
 
@@ -123,7 +141,7 @@ __kernel void mult_dn_complex_image(__global cfloat_t* input,
 
   float2 dn_val = read_imagef(dn, sampler, (float4)(1.f*i/subsample,1.f*j/subsample,1.f*zpos/subsample,0)).xy;
   
-  cfloat_t dnDiff = cfloat_mul((cfloat_t)(0,-unit_k),(cfloat_t)(dn_val.x,dn_val.y));
+  cfloat_t dnDiff = cfloat_mul(cfloat_new(0,-unit_k),cfloat_new(dn_val.x,dn_val.y));
   cfloat_t dPhase = cfloat_exp(dnDiff);
   
   input[i+Nx*j] = cfloat_mul(input[i+Nx*j],dPhase);
@@ -131,7 +149,7 @@ __kernel void mult_dn_complex_image(__global cfloat_t* input,
   //if ((i==64) &&(j==64))
   //  printf("kernel %.10f \n",dn_val.y);
 
-  //input[i+Nx*j] = (cfloat_t)(1.f,0.f);
+  //input[i+Nx*j] = cfloat_new(1.f,0.f);
 
 }
 
@@ -155,7 +173,7 @@ __kernel void divide_dn_complex(__global cfloat_t* plane0,__global cfloat_t* pla
   dn_val *= 1./unit_k;
 
   // dn_val = clamp(dn_val,0.f,4.f);
-  cfloat_t res = (cfloat_t)(dn_val,0.);
+  cfloat_t res = cfloat_new(dn_val,0.);
   
   dn[i+stride] = res;
 
@@ -182,13 +200,4 @@ __kernel void copy_complex(__global cfloat_t* input,__global cfloat_t* plane,
 
   uint i = get_global_id(0);
   plane[i] = input[i+stride];  
-}
-
-
-__kernel void fill_with_energy(__global float* input,__global cfloat_t* plane,
-					  const int stride){
-
-  uint i = get_global_id(0);
-  float val = cfloat_abs(plane[i]);
-  input[i+stride] = val*val;
 }

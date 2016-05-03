@@ -46,6 +46,7 @@ def bpm_3d(size,
            return_scattering = False,
            return_g = False,
            return_full = True,
+           return_field = True,
            absorbing_width = 0,
            use_fresnel_approx = False,
            scattering_plane_ind = 0,
@@ -60,6 +61,8 @@ def bpm_3d(size,
     dn       -    the refractive index of the medium (can be complex)
     n0       -    refractive index of surrounding medium
     return_full - if True, returns the complex field in volume otherwise only last plane
+    return_field -
+    return_last_plane -
     """
 
 
@@ -71,6 +74,7 @@ def bpm_3d(size,
                        n0 = n0,
                        return_scattering = return_scattering,
                        return_full = return_full,
+                       return_field = return_field,
                        return_g = return_g,
                        absorbing_width = absorbing_width,
                        use_fresnel_approx = use_fresnel_approx,
@@ -87,6 +91,7 @@ def bpm_3d(size,
                              return_g = return_g,
                              absorbing_width = absorbing_width,
                              return_full = return_full,
+                             return_field = return_field,
                              use_fresnel_approx = use_fresnel_approx,
                              store_dn_as_half = store_dn_as_half)
 
@@ -101,12 +106,310 @@ def _bpm_3d(size,
             return_scattering = False,
             return_g = False,
             return_full = True,
+            return_field = True,
             use_fresnel_approx = False,
             absorbing_width = 0,
             scattering_plane_ind = 0,
-            store_dn_as_half = False):
+            return_last_plane = False,
+            store_dn_as_half = False,
+            mean_mode = "simple"):
     """
     simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
+
+    size     -    the dimension of the image to be calulcated  in pixels (Nx,Ny,Nz)
+    units    -    the unit lengths of each dimensions in microns
+    lam      -    the wavelength
+    u0       -    the initial field distribution, if u0 = None an incident  plane wave is assumed
+    dn       -    the refractive index of the medium (can be complex)
+    dn_mean = "simple" or "weighted" or "ignore"
+    """
+
+
+    if subsample != 1:
+        raise NotImplementedError("subsample still has to be 1")
+
+    clock = StopWatch()
+
+    clock.tic("setup")
+
+    Nx, Ny, Nz = size
+    dx, dy, dz = units
+
+    program = OCLProgram(absPath("kernels/bpm_3d_kernels.cl"))
+
+    dn_sum_kernel= OCLReductionKernel(
+        np.float32, neutral="0",
+            reduce_expr="a+b",
+            map_expr="cfloat_abs(field[i])*cfloat_abs(field[i])*dn[i]",
+            arguments="__global cfloat_t *field, __global float * dn")
+
+    u_sum_kernel= OCLReductionKernel(
+        np.float32, neutral="0",
+            reduce_expr="a+b",
+            map_expr="cfloat_abs(field[i])*cfloat_abs(field[i])",
+            arguments="__global cfloat_t *field")
+
+
+    #setting up the propagator
+    k0 = 2.*np.pi/lam
+
+    kxs = 2.*np.pi*np.fft.fftfreq(Nx,dx)
+    kys = 2.*np.pi*np.fft.fftfreq(Ny,dy)
+
+    KY, KX = np.meshgrid(kys,kxs, indexing= "ij")
+
+    #H0 = np.sqrt(0.j+n0**2*k0**2-KX**2-KY**2)
+    H0 = np.sqrt(n0**2*k0**2-KX**2-KY**2)
+
+    if use_fresnel_approx:
+        H0  = 0.j+n0*k0-.5*(KX**2+KY**2)/n0/k0
+
+    outsideInds = np.isnan(H0)
+
+    H = np.exp(-1.j*dz*H0)
+
+    H[outsideInds] = 0.
+    H0[outsideInds] = 0.
+
+    if u0 is None:
+        u0 = np.ones((Ny,Nx),np.complex64)
+    
+    # setting up the gpu buffers and kernels
+
+    plan = fft_plan((Ny,Nx))
+    plane_g = OCLArray.from_array(u0.astype(np.complex64, copy = False))
+    h_g = OCLArray.from_array(H.astype(np.complex64))
+
+    program.run_kernel("compute_propagator",(Nx,Ny),None,
+                       h_g.data,
+                       np.float32(n0),np.float32(k0),
+                       np.float32(dx),np.float32(dy),np.float32(dz)
+                       )
+
+    if dn is not None:
+        if isinstance(dn,OCLArray):
+            dn_g = dn
+        else:
+            if dn.dtype.type in (np.complex64,np.complex128):
+                isComplexDn = True
+                dn_g = OCLArray.from_array(dn.astype(np.complex64,copy= False))
+
+            else:
+                isComplexDn = False
+                if store_dn_as_half:
+                    dn_g = OCLArray.from_array(dn.astype(np.float16,copy= False))
+                else:
+                    dn_g = OCLArray.from_array(dn.astype(np.float32,copy= False))
+    else:
+        #dummy dn
+        dn_g = OCLArray.empty((Nz,Ny,Nx),np.float32)
+
+    if not dn is None:
+        dn_mean = np.mean(dn,axis=(1,2))
+
+    else:
+        dn_mean = np.zeros(Nz, np.float32)
+        #dn_mean = dn
+
+
+    if return_scattering:
+        cos_theta = np.real(H0)/n0/k0
+
+        # _H = np.sqrt(n0**2*k0**2-KX**2-KY**2)
+        # _H[np.isnan(_H)] = 0.
+        #
+        # cos_theta = _H/n0/k0
+        # # = cos(theta)
+        scatter_weights = cos_theta
+
+        #scatter_weights = np.sqrt(KX**2+KY**2)/k0/np.real(H0)
+        #scatter_weights[outsideInds] = 0.
+
+        scatter_weights_g = OCLArray.from_array(scatter_weights.astype(np.float32))
+
+        # = cos(theta)^2
+        gfactor_weights = cos_theta**2
+
+        gfactor_weights_g = OCLArray.from_array(gfactor_weights.astype(np.float32))
+
+
+        #return None,None,scatter_weights, gfactor_weights
+
+        scatter_cross_sec_g = OCLArray.zeros(Nz,"float32")
+        gfactor_g = OCLArray.zeros(Nz,"float32")
+
+        plain_wave_dct = Nx*Ny*np.exp(-1.j*k0*n0*(scattering_plane_ind+np.arange(Nz))*dz).astype(np.complex64)
+
+
+        reduce_kernel = OCLReductionKernel(
+        np.float32, neutral="0",
+            reduce_expr="a+b",
+            map_expr="weights[i]*cfloat_abs(field[i]-(i==0)*plain)*cfloat_abs(field[i]-(i==0)*plain)",
+            arguments="__global cfloat_t *field, __global float * weights,cfloat_t plain")
+
+        # reduce_kernel = OCLReductionKernel(
+        # np.float32, neutral="0",
+        #     reduce_expr="a+b",
+        #     map_expr = "weights[i]*(i!=0)*cfloat_abs(field[i])*cfloat_abs(field[i])",
+        #     arguments = "__global cfloat_t *field, __global float * weights,cfloat_t plain")
+
+    if return_full:
+        if return_field:
+            u_g = OCLArray.empty((Nz,Ny,Nx),dtype=np.complex64)
+            u_g[0] = plane_g
+        else:
+            u_g = OCLArray.empty((Nz,Ny,Nx),dtype=np.float32)
+            program.run_kernel("copy_intens",(Nx*Ny,),None,
+                           plane_g.data,u_g.data, np.int32(0))
+
+
+    clock.toc("setup")
+
+    clock.tic("run")
+
+
+    for i in range(Nz-1):
+        fft(plane_g,inplace = True, plan  = plan)
+
+
+        if mean_mode =="simple":
+            dn0 = dn_mean[i+1]
+            program.run_kernel("mult_propagator",(Nx,Ny),None,
+                       plane_g.data,
+                       np.float32(n0+dn0),np.float32(k0),
+                       np.float32(dx),np.float32(dy),np.float32(dz)
+                       )
+
+        elif mean_mode =="weighted":
+            dn0 = float(dn_sum_kernel(plane_g,dn_g).get()/u_sum_kernel(plane_g).get())
+            program.run_kernel("mult_propagator",(Nx,Ny),None,
+                       plane_g.data,
+                       np.float32(n0+dn0),np.float32(k0),
+                       np.float32(dx),np.float32(dy),np.float32(dz)
+                       )
+        elif mean_mode =="ignore":
+            dn0 = 0.
+            program.run_kernel("mult",(Nx*Ny,),None,
+                           plane_g.data,h_g.data)
+
+        else:
+            raise NotImplementedError
+
+
+
+        #
+        # program.run_kernel("compute_propagator",(Nx,Ny),None,
+        #                h_g.data,
+        #                np.float32(1.+dn_mean[i+1]),np.float32(k0),
+        #                np.float32(dx),np.float32(dy),np.float32(dz)
+        #                )
+        # program.run_kernel("mult",(Nx*Ny,),None,
+        #                    plane_g.data,h_g.data)
+
+
+
+
+
+        if return_scattering:
+            scatter_cross_sec_g[i+1] = reduce_kernel(plane_g,
+                                                     scatter_weights_g,
+                                                     plain_wave_dct[i+1])
+            gfactor_g[i+1] = reduce_kernel(plane_g,
+                                                     gfactor_weights_g,
+                                                     plain_wave_dct[i+1])
+
+        fft(plane_g,inplace = True, inverse = True,  plan  = plan)
+
+        if dn is not None:
+            if isComplexDn:
+
+                kernel_str = "mult_dn_mean_complex"
+            else:
+                if dn_g.dtype.type == np.float16:
+                    kernel_str = "mult_dn_mean_half"
+                else:
+                    kernel_str = "mult_dn_mean"
+
+
+            program.run_kernel(kernel_str,(Nx,Ny,),None,
+                                   plane_g.data,dn_g.data,
+                                   np.float32(k0*dz),
+                                  np.float32(dn0),
+                                   np.int32(Nx*Ny*(i+1)),
+                               np.int32(absorbing_width))
+
+
+
+
+        if return_full:
+            if return_field:
+                u_g[i+1] = plane_g
+            else:
+                program.run_kernel("copy_intens",(Nx*Ny,),None,
+                           plane_g.data,u_g.data, np.int32(Nx*Ny*(i+1)))
+
+
+    clock.toc("run")
+
+    print clock
+
+    if return_full:
+        u = u_g.get()
+    else:
+        u = plane_g.get()
+        if not return_field:
+            u = np.abs(u)**2
+
+    if return_scattering:
+        # normalizing prefactor dkx = dx/Nx
+        # prefac = 1./Nx/Ny*dx*dy/4./np.pi/n0
+        prefac = 1./Nx/Ny*dx*dy
+        p = prefac*scatter_cross_sec_g.get()
+
+
+    if return_g:
+        prefac = 1./Nx/Ny*dx*dy
+        g = prefac*gfactor_g.get()/p
+
+
+
+    if return_scattering:
+        if return_g:
+            result = u,  p, g
+        else:
+            result =  u,  p
+    else:
+        result = u
+
+    if return_last_plane:
+        if isinstance(result,tuple):
+            result = result + (plane_g.get(),)
+        else:
+            result = (result, plane_g.get())
+
+
+    return result
+
+
+
+def _bpm_3d2(size,
+            units,
+            lam = .5,
+            u0 = None,
+            dn = None,
+            subsample = 1,
+            n0 = 1.,
+            return_scattering = False,
+            return_g = False,
+            return_full = True,
+            return_field = True,
+            use_fresnel_approx = False,
+            absorbing_width = 0,
+            scattering_plane_ind = 0,
+            return_last_plane = False,
+            store_dn_as_half = False):
+    """
+    simulates the propagation of monochromatic wave of wavelength lam with initial conditions u0 along z in a media filled with dn
 
     size     -    the dimension of the image to be calulcated  in pixels (Nx,Ny,Nz)
     units    -    the unit lengths of each dimensions in microns
@@ -152,13 +455,13 @@ def _bpm_3d(size,
 
     if u0 is None:
         u0 = np.ones((Ny,Nx),np.complex64)
-    
+
     # setting up the gpu buffers and kernels
 
     program = OCLProgram(absPath("kernels/bpm_3d_kernels.cl"))
 
     plan = fft_plan((Ny,Nx))
-    plane_g = OCLArray.from_array(u0.astype(np.complex64))
+    plane_g = OCLArray.from_array(u0.astype(np.complex64, copy = False))
     h_g = OCLArray.from_array(H.astype(np.complex64))
 
     if dn is not None:
@@ -223,8 +526,14 @@ def _bpm_3d(size,
         #     arguments = "__global cfloat_t *field, __global float * weights,cfloat_t plain")
 
     if return_full:
-        u_g = OCLArray.empty((Nz,Ny,Nx),dtype=np.complex64)
-        u_g[0] = plane_g
+        if return_field:
+            u_g = OCLArray.empty((Nz,Ny,Nx),dtype=np.complex64)
+            u_g[0] = plane_g
+        else:
+            u_g = OCLArray.empty((Nz,Ny,Nx),dtype=np.float32)
+            program.run_kernel("copy_intens",(Nx*Ny,),None,
+                           plane_g.data,u_g.data, np.int32(0))
+
 
     clock.toc("setup")
 
@@ -270,7 +579,11 @@ def _bpm_3d(size,
 
 
         if return_full:
-            u_g[i+1] = plane_g
+            if return_field:
+                u_g[i+1] = plane_g
+            else:
+                program.run_kernel("copy_intens",(Nx*Ny,),None,
+                           plane_g.data,u_g.data, np.int32(Nx*Ny*(i+1)))
 
     clock.toc("run")
 
@@ -280,6 +593,8 @@ def _bpm_3d(size,
         u = u_g.get()
     else:
         u = plane_g.get()
+        if not return_field:
+            u = np.abs(u)**2
 
     if return_scattering:
         # normalizing prefactor dkx = dx/Nx
@@ -292,13 +607,24 @@ def _bpm_3d(size,
         prefac = 1./Nx/Ny*dx*dy
         g = prefac*gfactor_g.get()/p
 
+
+
     if return_scattering:
         if return_g:
-            return u,  p, g
+            result = u,  p, g
         else:
-            return u,  p
+            result =  u,  p
     else:
-        return u
+        result = u
+
+    if return_last_plane:
+        if isinstance(result,tuple):
+            result = result + (plane_g.get(),)
+        else:
+            result = (result, plane_g.get())
+
+
+    return result
 
 
 
@@ -507,8 +833,9 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                  n0 = 1.,
                  subsample=1,
                  return_scattering = False,
-                 return_full = True,
+                  return_full = True,
                  return_g = False,
+                  return_field = True,
                   absorbing_width = 0,
                  use_fresnel_approx = False,
                   store_dn_as_half = False):
@@ -524,12 +851,17 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
         u0 = np.ones((subsample*Ny,subsample*Nx),np.complex64)
 
 
-    if return_full:
-        u = np.empty((Nz,Ny,Nx),np.complex64)
-        u_part = np.empty((Nz2,Ny,Nx),np.complex64)
+    if return_field:
+        u_dtype = np.complex64
     else:
-        u = np.empty((Ny,Nx),np.complex64)
-        u_part = np.empty((Ny,Nx),np.complex64)
+        u_dtype = np.float32
+
+    if return_full:
+        u = np.empty((Nz,Ny,Nx),u_dtype)
+        u_part = np.empty((Nz2,Ny,Nx),u_dtype)
+    else:
+        u = np.empty((Ny,Nx),u_dtype)
+        u_part = np.empty((Ny,Nx),u_dtype)
 
     p = np.empty(Nz,np.float32)
     g = np.empty(Nz,np.float32)
@@ -550,6 +882,8 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                n0 = n0,
                                subsample = subsample,
                                return_full = return_full,
+                               return_field = return_field,
+                               return_last_plane=True,
                                return_g = return_g,
                                absorbing_width = absorbing_width,
                                return_scattering = return_scattering,
@@ -559,20 +893,20 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
 
             if return_scattering:
                 if return_g:
-
-                    u_part, p_part, g_part = res_part
+                    u_part, p_part, g_part, u0= res_part
                     g[i1:i2] = g_part[1:]
                 else:
-                    u_part, p_part = res_part
+                    u_part, p_part, u0= res_part
                 p[i1:i2] = p_part[1:]
             else:
-                u_part = res_part
+                u_part, u0 = res_part
 
             if return_full:
                 u[i1:i2,...] = u_part[:-1,...]
-                u0 = u_part[-1]
+                #u0 = u_part[-1]
             else:
-                u0 = u_part
+                pass
+                #u0 = u_part
 
         else:
             if dn is None:
@@ -588,6 +922,7 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                n0 = n0,
                                subsample = subsample,
                                return_full = return_full,
+                               return_field = return_field,
                                return_g = return_g,
                                absorbing_width = absorbing_width,
                                return_scattering = return_scattering,
@@ -608,7 +943,7 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                 u_part = res_part
             if return_full:
                 u[i1:i2,...] = u_part
-                u0 = u_part[-1]
+                #u0 = u_part[-1]
             else:
                 u = u_part
 
@@ -838,37 +1173,18 @@ def test_compare():
 if __name__ == '__main__':
     # test_speed()
 
-    u = test_sphere()
+    #u = test_sphere()
 
-    # u1, u2 = test_compare()
+    N = 256
+    dx = .05
+    from bpm import psf_u0
 
-    
-    # u, u0 = test_plane(n_x_comp = 1 , n0 = 1.)
+    if not "dn" in locals():
+        dn = np.zeros((N,)*3,np.float32)
+        dn[:40,...] += .2
+        u0 = psf_u0((N,)*2,(dx,)*2,zfoc = N/2.*dx,NA = .4)
 
-    # u, dn, p = test_slit()
-
-
-    
-    # Nx, Nz = 256,128
-    # dx, dz = .05, 0.05
-
-    # lam = .5
-
-    # units = (dx,dx,dz)
-    # rad = 2.
-
-    # x = dx*np.arange(-Nx/2,Nx/2)
-    # x = dx*np.arange(-Nx/2,Nx/2)
-    # z = dz*np.arange(Nz)
-    # Z,Y,X = np.meshgrid(z,x,x,indexing="ij")
-    # R = np.sqrt(X**2+Y**2)
-    # dn = ((R<2.)*(Z<.1))*100.j
-    
-    # u, dn, p = bpm_3d((Nx,Nx,Nz),units= units, lam = lam,
-    #                   dn = dn,
-    #                   return_scattering = True )
-
-    # u0 = u[1,...]
-    # u = bpm_3d_split((Nx,Nx,Nz),units= units, NZsplit=4,lam = lam)
+    u1 = bpm_3d(dn.shape[::-1],(dx,)*3, u0=u0,dn = dn, n_volumes=1)
+    #u2 = _bpm_3d2(dn.shape[::-1],(dx,)*3, u0=u0,dn = dn)
 
     
