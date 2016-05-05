@@ -2,7 +2,7 @@
 
 #define M_PI 3.14159265358979f
 
-// #define FFTFREQ(i,N,dx) ((i<((N-1)/2+1))?(1.f*i/N)/dx:1.f*((i-((N-1)/2+1))-N/2)/N/dx)
+
 #define FFTFREQ(i,N,dx) ((i<((N-1)/2+1))?1.f*i/N/dx:1.f*((i-((N-1)/2+1))-N/2)/N/dx)
 
 
@@ -100,6 +100,99 @@ __kernel void mult_dn_complex(__global cfloat_t* input,
 
 }
 
+
+__kernel void mult_dn_mean_buff(__global cfloat_t* input,
+						   __global float* dn,
+                           __global float* dn_sum,
+                           __global float* u_sum,
+						   const float unit_k,
+						   const int stride,
+						   const int absorb){
+
+  int i = get_global_id(0);
+  int j = get_global_id(1);
+  int Nx = get_global_size(0);
+  int Ny = get_global_size(1);
+
+  float dn0 = dn_sum[0]/u_sum[0];
+
+  float dnDiff = -unit_k*(dn[i+Nx*j+stride]-dn0);
+
+  int distx = min(Nx-i-1,i);
+  int disty = min(Ny-j-1,j);
+  int dist = min(distx,disty);
+
+  float absorb_val = (dist<absorb)?0.5f*(1-cos(M_PI*dist/absorb)):1.f;
+
+  cfloat_t dPhase = cfloat_new(cos(dnDiff),sin(dnDiff));
+
+  cfloat_t res = cfloat_mul(input[i+Nx*j],dPhase);
+
+  res = cfloat_mul(res,cfloat_new(absorb_val,0.f));
+
+
+  input[i+Nx*j] = res;
+
+}
+
+
+__kernel void mult_dn_mean_half_buff(__global cfloat_t* input,
+					  __global half * dn,
+                      __global float* dn_sum,
+                      __global float* u_sum,
+					  const float unit_k,
+					  const int stride,
+					  const int absorb){
+
+  int i = get_global_id(0);
+  int j = get_global_id(1);
+  int Nx = get_global_size(0);
+  int Ny = get_global_size(1);
+
+  float dn0 = dn_sum[0]/u_sum[0];
+  float dn_val = vload_half(i+Nx*j+stride,dn);
+  float dnDiff = -unit_k*(dn_val-dn0);
+
+  int distx = min(Nx-i-1,i);
+  int disty = min(Ny-j-1,j);
+  int dist = min(distx,disty);
+
+  float absorb_val = (dist<absorb)?0.5f*(1.f-cos(M_PI*dist/absorb)):1.f;
+
+  cfloat_t dPhase = cfloat_new(cos(dnDiff),sin(dnDiff));
+
+  cfloat_t res = cfloat_mul(input[i+Nx*j],dPhase);
+
+  res = cfloat_mul(res,cfloat_new(absorb_val,0.f));
+
+
+  input[i+Nx*j] = res;
+
+}
+
+
+__kernel void mult_dn_mean_complex_buff(__global cfloat_t* input,
+					  __global cfloat_t* dn,
+                      __global cfloat_t* dn_sum,
+                      __global float* u_sum,
+
+					  const float unit_k,
+					  const int stride,
+					  const int absorb){
+
+  int i = get_global_id(0);
+  int j = get_global_id(1);
+  int Nx = get_global_size(0);
+
+  cfloat_t dn0 = cfloat_divider(dn_sum[0],u_sum[0]);
+  cfloat_t dnDiff = cfloat_mul(cfloat_new(0.f,-unit_k),cfloat_sub(dn[i+Nx*j+stride],dn0));
+
+  cfloat_t dPhase = cfloat_exp(dnDiff);
+
+
+  input[i+Nx*j] = cfloat_mul(input[i+Nx*j],dPhase);
+
+}
 
 
 __kernel void mult_dn_mean(__global cfloat_t* input,
@@ -251,7 +344,7 @@ __kernel void mult_dn_complex_image(__global cfloat_t* input,
 }
 
 
-#define M_PI 3.14159265358979323846
+
 
 __kernel void divide_dn_complex(__global cfloat_t* plane0,__global cfloat_t* plane1,
 					  __global cfloat_t* dn,const float unit_k, const int stride){
@@ -367,6 +460,39 @@ __kernel void mult_propagator(__global cfloat_t* plane,
 
   plane[i+Nx*j] = cfloat_mul(plane[i+Nx*j],h);
 }
+
+
+__kernel void mult_propagator_buff(__global cfloat_t* plane,
+                                    __global float* dn_sum,
+                                    __global float* u_sum,
+								 const float n00,
+								 const float k0,
+								 const float dx,
+								 const float dy,
+								 const float dz
+								 ){
+
+  int i = get_global_id(0);
+  int j = get_global_id(1);
+  int Nx = get_global_size(0);
+  int Ny = get_global_size(1);
+
+  float kx = 2.f*M_PI*FFTFREQ(i,Nx,dx);
+  float ky = 2.f*M_PI*FFTFREQ(j,Ny,dy);
+
+  float n0 = n00+dn_sum[0]/u_sum[0];
+
+  float tmp = n0*n0*k0*k0-kx*kx-ky*ky;
+
+  float h0 = (tmp<0.f)?0.f:sqrt(tmp);
+
+
+  cfloat_t h = cfloat_new((float)(tmp>=0.f)*cos(-dz*h0),(float)(tmp>=0.f)*sin(-dz*h0));
+
+  plane[i+Nx*j] = cfloat_mul(plane[i+Nx*j],h);
+}
+
+
 
 
 

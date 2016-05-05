@@ -483,18 +483,4 @@ def test_debye():
 if __name__ == '__main__':
 
 
-    x = np.linspace(-10,10,256)
-    Y,X = np.meshgrid(x,x,indexing= "ij")
-    w = .3
-    z0 = -10.
-
-    X,Z = np.cos(w)*X, z0+np.sin(w)*X
-
-
-    u0, ex,ey,ez = focus_field_debye_at(X,Y,Z,lam=.5, NA = .5)
-
-    # u,u2 = test_debye() 
-
-    #
-    # u,ex,ey,ez = psf_debye_mask((128,)*3,(.05,)*3,
-    #                        lam = .5, n_integration_steps= 100)
+    u, ex,ey,ez = focus_field_debye((256,)*3,(0.01,)*3,lam=.5, NA = .4)

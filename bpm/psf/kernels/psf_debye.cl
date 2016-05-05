@@ -104,13 +104,15 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
   float vy = cfloat_abs(ey);
   float vz = cfloat_abs(ez);
 
+
+
   Ex[i+j*Nx+k*Nx*Ny] = ex;
   Ey[i+j*Nx+k*Nx*Ny] = ey;
   Ez[i+j*Nx+k*Nx*Ny] = ez;
 
-  //I[i+j*Nx+k*Nx*Ny] = vx*vx+vy*vy+vz*vz;
+  I[i+j*Nx+k*Nx*Ny] = vx*vx+vy*vy+vz*vz;
 
-  I[i+j*Nx+k*Nx*Ny] = vx*vx;
+  //I[i+j*Nx+k*Nx*Ny] = vx*vx;
 
 }
 

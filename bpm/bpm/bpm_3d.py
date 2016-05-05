@@ -50,7 +50,8 @@ def bpm_3d(size,
            absorbing_width = 0,
            use_fresnel_approx = False,
            scattering_plane_ind = 0,
-           store_dn_as_half = False):
+           store_dn_as_half = False,
+           mean_mode = "weighted"):
     """
     simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
 
@@ -63,6 +64,8 @@ def bpm_3d(size,
     return_full - if True, returns the complex field in volume otherwise only last plane
     return_field -
     return_last_plane -
+
+    mean_mode = "simple" or "weighted" or "ignore"
     """
 
 
@@ -79,7 +82,8 @@ def bpm_3d(size,
                        absorbing_width = absorbing_width,
                        use_fresnel_approx = use_fresnel_approx,
                        scattering_plane_ind =  scattering_plane_ind,
-                       store_dn_as_half = store_dn_as_half)
+                       store_dn_as_half = store_dn_as_half,
+                       mean_mode = mean_mode)
     else:
         return _bpm_3d_split(size, units,
                              lam = lam,
@@ -93,7 +97,8 @@ def bpm_3d(size,
                              return_full = return_full,
                              return_field = return_field,
                              use_fresnel_approx = use_fresnel_approx,
-                             store_dn_as_half = store_dn_as_half)
+                             store_dn_as_half = store_dn_as_half,
+                             mean_mode = mean_mode)
 
 
 def _bpm_3d(size,
@@ -112,7 +117,7 @@ def _bpm_3d(size,
             scattering_plane_ind = 0,
             return_last_plane = False,
             store_dn_as_half = False,
-            mean_mode = "simple"):
+            mean_mode = "weighted"):
     """
     simulates the propagation of monochromativ wave of wavelength lam with initial conditions u0 along z in a media filled with dn
 
@@ -121,9 +126,13 @@ def _bpm_3d(size,
     lam      -    the wavelength
     u0       -    the initial field distribution, if u0 = None an incident  plane wave is assumed
     dn       -    the refractive index of the medium (can be complex)
-    dn_mean = "simple" or "weighted" or "ignore"
+    mean_mode = "simple" or "weighted" or "ignore"
     """
 
+
+    print mean_mode
+    if not mean_mode in ["ignore","simple", "weighted"]:
+        raise NotImplementedError("mean_mode  '%s' unknown"%mean_mode)
 
     if subsample != 1:
         raise NotImplementedError("subsample still has to be 1")
@@ -140,13 +149,13 @@ def _bpm_3d(size,
     dn_sum_kernel= OCLReductionKernel(
         np.float32, neutral="0",
             reduce_expr="a+b",
-            map_expr="cfloat_abs(field[i])*cfloat_abs(field[i])*dn[i]",
+            map_expr="cfloat_abs(field[i])*dn[i]",
             arguments="__global cfloat_t *field, __global float * dn")
 
     u_sum_kernel= OCLReductionKernel(
         np.float32, neutral="0",
             reduce_expr="a+b",
-            map_expr="cfloat_abs(field[i])*cfloat_abs(field[i])",
+            map_expr="cfloat_abs(field[i])",
             arguments="__global cfloat_t *field")
 
 
@@ -211,6 +220,9 @@ def _bpm_3d(size,
         dn_mean = np.zeros(Nz, np.float32)
         #dn_mean = dn
 
+    if mean_mode=="weighted":
+        out_dn_sum = OCLArray.empty(1,np.float32)
+        out_u_sum = OCLArray.empty(1,np.float32)
 
     if return_scattering:
         cos_theta = np.real(H0)/n0/k0
@@ -281,10 +293,20 @@ def _bpm_3d(size,
                        )
 
         elif mean_mode =="weighted":
-            dn0 = float(dn_sum_kernel(plane_g,dn_g).get()/u_sum_kernel(plane_g).get())
-            program.run_kernel("mult_propagator",(Nx,Ny),None,
+            # dn0 = float(dn_sum_kernel(plane_g,dn_g).get()/u_sum_kernel(plane_g).get())
+            # program.run_kernel("mult_propagator",(Nx,Ny),None,
+            #            plane_g.data,
+            #            np.float32(n0+dn0),np.float32(k0),
+            #            np.float32(dx),np.float32(dy),np.float32(dz)
+            #            )
+            dn_sum_kernel(plane_g,dn_g,out = out_dn_sum)
+            u_sum_kernel(plane_g, out = out_u_sum)
+
+            program.run_kernel("mult_propagator_buff",(Nx,Ny),None,
                        plane_g.data,
-                       np.float32(n0+dn0),np.float32(k0),
+                               out_dn_sum.data,
+                               out_u_sum.data,
+                       np.float32(n0),np.float32(k0),
                        np.float32(dx),np.float32(dy),np.float32(dz)
                        )
         elif mean_mode =="ignore":
@@ -330,8 +352,18 @@ def _bpm_3d(size,
                 else:
                     kernel_str = "mult_dn_mean"
 
+            if mean_mode =="weighted":
+                kernel_str += "_buff"
+                program.run_kernel(kernel_str,(Nx,Ny,),None,
+                                   plane_g.data,dn_g.data,
+                                   out_dn_sum.data,
+                                   out_u_sum.data,
+                                   np.float32(k0*dz),
+                                   np.int32(Nx*Ny*(i+1)),
+                               np.int32(absorbing_width))
 
-            program.run_kernel(kernel_str,(Nx,Ny,),None,
+            else:
+                program.run_kernel(kernel_str,(Nx,Ny,),None,
                                    plane_g.data,dn_g.data,
                                    np.float32(k0*dz),
                                   np.float32(dn0),
@@ -838,7 +870,8 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                   return_field = True,
                   absorbing_width = 0,
                  use_fresnel_approx = False,
-                  store_dn_as_half = False):
+                  store_dn_as_half = False,
+                  mean_mode = "weighted"):
     """
     same as bpm_3d but splits z into n_volumes pieces (e.g. if memory of GPU is not enough)
     """
@@ -888,7 +921,8 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                absorbing_width = absorbing_width,
                                return_scattering = return_scattering,
                                scattering_plane_ind = Nz2*i,
-                               store_dn_as_half = store_dn_as_half)
+                               store_dn_as_half = store_dn_as_half,
+                               mean_mode = mean_mode)
 
 
             if return_scattering:
@@ -927,7 +961,8 @@ def _bpm_3d_split(size, units, lam = .5, u0 = None, dn = None,
                                absorbing_width = absorbing_width,
                                return_scattering = return_scattering,
                                scattering_plane_ind = Nz2*i,
-                               store_dn_as_half = store_dn_as_half)
+                               store_dn_as_half = store_dn_as_half,
+                               mean_mode = mean_mode)
 
             if return_scattering:
                 if return_g:
