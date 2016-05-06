@@ -110,7 +110,7 @@ def psf_u0(shape,units,zfoc = 0,NA = .4,lam = .5, n0 = 1., n_integration_steps =
     Nx, Ny = shape
     dx, dy = units
 
-    u, ex, ey, ez = psf((Nx,Ny,4),(dx,dy,zfoc/1.5),
+    u, ex, ey, ez = psf((Nx,Ny,4),(dx,dy,zfoc/2),
                               n0 = n0,
                               lam = lam,NA = NA,
                               n_integration_steps= n_integration_steps,
@@ -136,8 +136,8 @@ def psf_cylindrical(shape,units,lam,NA, n0=1.,
         return u
 
 
-def psf_cylindrical_u0(shape,units,zfoc,lam,NA, n0=1.,  n_integration_steps = 200):
-    """calculates initial plane u0 of a cylidrical lense beam focused at zfoc
+def psf_cylindrical_u0(shape, units, zfoc, lam, NA, n0=1.,  n_integration_steps = 200):
+    """calculates initial plane u0 of a cylidrical lens beam focused at zfoc
     shape = (Nx,Ny)
     units = (dx,dy)
     NA = e.g. 0.6
@@ -149,6 +149,7 @@ def psf_cylindrical_u0(shape,units,zfoc,lam,NA, n0=1.,  n_integration_steps = 20
 
     u , ex = psf_cylindrical(shape = (Nx,Ny,4),units = (dx,dy,2.*zfoc/3.),
                               lam = lam,NA = NA,n0=n0,
+                             n_integration_steps=n_integration_steps,
                              return_field=True)
 
     # return ex

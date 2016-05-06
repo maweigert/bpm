@@ -78,6 +78,116 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     assert len(alphas)%2 ==0
 
     # as we assume the psf to be symmetric, we just have to calculate each octant
+    Nx = Nx0/2+1
+    Ny = Ny0/2+1
+    Nz = Nz0/2+1
+
+    u_g = OCLArray.empty((Nz,Ny,Nx),np.float32)
+    ex_g = OCLArray.empty(u_g.shape,np.complex64)
+    ey_g = OCLArray.empty(u_g.shape,np.complex64)
+    ez_g = OCLArray.empty(u_g.shape,np.complex64)
+
+    alpha_g = OCLArray.from_array(alphas.astype(np.float32))
+
+    t = time.time()
+    
+    p.run_kernel("debye_wolf",u_g.shape[::-1],None,
+                 ex_g.data,ey_g.data,ez_g.data, u_g.data,
+                 np.float32(1.),np.float32(0.),
+                 np.float32(0.),np.float32(dx*(Nx-1.)),
+                 np.float32(0.),np.float32(dy*(Ny-1.)),
+                 np.float32(0.),np.float32(dz*(Nz-1.)),
+                 np.float32(lam),
+                 np.float32(n0),
+                 alpha_g.data, np.int32(len(alphas)))
+
+    u = u_g.get()
+    ex = ex_g.get()
+    ey = ey_g.get()
+    ez = ez_g.get()
+
+    print "time in secs:" , time.time()-t
+    
+    u_all = np.empty((Nz0,Ny0,Nx0),np.float32)
+    ex_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
+    ey_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
+    ez_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
+
+    # sx = [slice(0,Nx),slice(Nx0-Nx0/2,Nx0)]
+    # sy = [slice(0,Ny),slice(Ny0-Ny0/2,Ny0)]
+    # sz = [slice(0,Nz),slice(Nz0-Nz0/2,Nz0)]
+
+    sx = [slice(0,Nx),slice(Nx0-Nx,Nx0)]
+    sy = [slice(0,Ny),slice(Ny0-Ny,Ny0)]
+    sz = [slice(0,Nz),slice(Nz0-Nz,Nz0)]
+
+    sx = [slice(0,Nx),slice(Nx,Nx0)]
+    sy = [slice(0,Ny),slice(Ny,Ny0)]
+    sz = [slice(0,Nz),slice(Nz,Nz0)]
+
+
+    #FIXME: the loop below does not yet work for odd inputs
+    assert Nx0%2+Ny0%2+Nz0%2==0
+
+    # spreading the calculated octant to the full volume
+    for i,j,k in itertools.product([0,1],[0,1],[0,1]):
+        #u_all[sz[1-i],sy[1-j],sx[1-k]] = u[::(-1)**i,::(-1)**j,::(-1)**k]
+        u_all[sz[1-i],sy[1-j],sx[1-k]] = u[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k]
+
+        if i ==1:
+            ex_all[sz[1-i],sy[1-j],sx[1-k]] = ex[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k]
+            ey_all[sz[1-i],sy[1-j],sx[1-k]] = ey[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k]
+            ez_all[sz[1-i],sy[1-j],sx[1-k]] = ez[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k]
+            # ex_all[sz[1-i],sy[1-j],sx[1-k]] = ex[::(-1)**i,::(-1)**j,::(-1)**k]
+            # ey_all[sz[1-i],sy[1-j],sx[1-k]] = ey[::(-1)**i,::(-1)**j,::(-1)**k]
+            # ez_all[sz[1-i],sy[1-j],sx[1-k]] = ez[::(-1)**i,::(-1)**j,::(-1)**k]
+
+        else:
+            ex_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ex[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k])
+            ey_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ey[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k])
+            ez_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ez[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k])
+
+            # ex_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ex[::(-1)**i,::(-1)**j,::(-1)**k])
+            # ey_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ey[::(-1)**i,::(-1)**j,::(-1)**k])
+            # ez_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ez[::(-1)**i,::(-1)**j,::(-1)**k])
+
+
+    return u_all, ex_all, ey_all, ez_all
+
+
+def focus_field_debye3(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
+    """
+    calculates the focus_field for a perfect, aberration free optical system
+    via the vectorial debye diffraction integral
+
+    see
+    Matthew R. Foreman, Peter Toeroek,
+    Computational methods in vectorial imaging,
+    Journal of Modern Optics, 2011, 58, 5-6, 339
+
+
+
+    returns u,ex,ey,ex
+    with u being the intensity and (ex,ey,ez) the complex field components
+
+
+    NA can be either a single number or an even length list of NAs (for bessel beams), e.g.
+    NA = [.1,.2,.5,.6] lets light through the annulus .1<.2 and .5<.6
+    """
+
+    print absPath("kernels/psf_debye.cl")
+    p = OCLProgram(absPath("kernels/psf_debye.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+
+    if np.isscalar(NA):
+        NA = [0.,NA]
+
+    Nx0, Ny0, Nz0 = shape
+    dx, dy, dz = units
+
+    alphas = np.arcsin(np.array(NA)/n0)
+    assert len(alphas)%2 ==0
+
+    # as we assume the psf to be symmetric, we just have to calculate each octant
     Nx = (Nx0+1)/2
     Ny = (Ny0+1)/2
     Nz = (Nz0+1)/2
@@ -90,7 +200,7 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     alpha_g = OCLArray.from_array(alphas.astype(np.float32))
 
     t = time.time()
-    
+
     p.run_kernel("debye_wolf",u_g.shape[::-1],None,
                  ex_g.data,ey_g.data,ez_g.data, u_g.data,
                  np.float32(1.),np.float32(0.),
@@ -107,7 +217,7 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     ez = ez_g.get()
 
     print "time in secs:" , time.time()-t
-    
+
     u_all = np.empty((Nz0,Ny0,Nx0),np.float32)
     ex_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
     ey_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
@@ -143,8 +253,10 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
             ey_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ey[::(-1)**i,::(-1)**j,::(-1)**k])
             ez_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ez[::(-1)**i,::(-1)**j,::(-1)**k])
 
-        
+
     return u_all, ex_all, ey_all, ez_all
+
+
 
 
 def focus_field_debye_at(x,y,z,lam, NA, n0 = 1., n_integration_steps = 200):

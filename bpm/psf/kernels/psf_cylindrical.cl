@@ -4,8 +4,10 @@
 #define M_PI 3.141592653589793f
 
 #ifndef INT_STEPS
-#define INT_STEPS 100
+#define INT_STEPS 200
 #endif
+
+
 
 __kernel void psf_cylindrical(
 							  __global cfloat_t * Ex,
@@ -16,9 +18,13 @@ __kernel void psf_cylindrical(
 							  const float n0,
 							  const float alpha){
 
+
   int i = get_global_id(0);
   int j = get_global_id(1);
 
+
+    if (i+j==0)
+    printf("int steps: %d", INT_STEPS);
   int Ny = get_global_size(0);
   int Nz = get_global_size(1);
 
