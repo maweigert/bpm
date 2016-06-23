@@ -155,6 +155,70 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     return u_all, ex_all, ey_all, ez_all
 
 
+def focus_field_debye_plane(shape,units,z = 0., lam = .5, NA = .6, n0 = 1.,
+                            ex_g = None,
+                            n_integration_steps = 200):
+    """
+    calculates the x component of the electric field  at a given z position z for a perfect, aberration free optical system
+    via the vectorial debye diffraction integral
+
+    see
+    Matthew R. Foreman, Peter Toeroek,
+    Computational methods in vectorial imaging,
+    Journal of Modern Optics, 2011, 58, 5-6, 339
+
+
+    NA can be either a single number or an even length list of NAs (for bessel beams), e.g.
+    NA = [.1,.2,.5,.6] lets light through the annulus .1<.2 and .5<.6
+
+    if ex_g is a valid OCLArray it fills it and returns None
+    otherwise returns ex as a numpy array
+
+
+    """
+
+
+    p = OCLProgram(absPath("kernels/psf_debye.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+
+    if np.isscalar(NA):
+        NA = [0.,NA]
+
+    Nx, Ny = shape
+    dx, dy = units
+
+    alphas = np.arcsin(np.array(NA)/n0)
+    assert len(alphas)%2 ==0
+
+    if ex_g is None:
+        use_buffer = False
+        ex_g = OCLArray.empty((Ny,Nx),np.complex64)
+    else:
+        use_buffer = True
+
+    assert ex_g.shape == shape
+
+    alpha_g = OCLArray.from_array(alphas.astype(np.float32))
+
+    t = time.time()
+
+    p.run_kernel("debye_wolf_plane",(Nx,Ny),None,
+                 ex_g.data,
+                 np.float32(1.),np.float32(0.),
+                 np.float32(-(Nx/2)*dx),np.float32((Nx-Nx/2)*dx),
+                 np.float32(-(Ny/2)*dy),np.float32((Ny-Ny/2)*dy),
+                 np.float32(z),
+                 np.float32(lam),
+                 np.float32(n0),
+                 alpha_g.data, np.int32(len(alphas)))
+
+    print "time in secs:" , time.time()-t
+
+    if not use_buffer:
+        return ex_g.get()
+
+
+
+
 def focus_field_debye3(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     """
     calculates the focus_field for a perfect, aberration free optical system
@@ -594,5 +658,6 @@ def test_debye():
 
 if __name__ == '__main__':
 
+    ex = focus_field_debye_plane((128,)*2,(.05,)*2, z = 0, NA = .8, n0 = 1.)
 
-    u, ex,ey,ez = focus_field_debye((256,)*3,(0.01,)*3,lam=.5, NA = .4)
+    # u, ex,ey,ez = focus_field_debye((256,)*3,(0.01,)*3,lam=.5, NA = .4)
