@@ -65,14 +65,22 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     NA = [.1,.2,.5,.6] lets light through the annulus .1<.2 and .5<.6
     """
 
+
     print absPath("kernels/psf_debye.cl")
-    p = OCLProgram(absPath("kernels/psf_debye.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+    #p = OCLProgram(absPath("kernels/psf_debye.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+    p = OCLProgram(absPath("kernels/psf_debye.cl"),
+            build_options = ["-I",absPath("kernels"),"-D","INT_STEPS=%s"%n_integration_steps])
 
     if np.isscalar(NA):
         NA = [0.,NA]
     
     Nx0, Ny0, Nz0 = shape
     dx, dy, dz = units
+
+    #FIXME: the loop below does not yet work for odd inputs
+    if not Nx0%2+Ny0%2+Nz0%2==0:
+        raise NotImplementedError("odd shapes not supported yet")
+
 
     alphas = np.arcsin(np.array(NA)/n0)
     assert len(alphas)%2 ==0
@@ -97,8 +105,7 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
                  np.float32(0.),np.float32(dx*(Nx-1.)),
                  np.float32(0.),np.float32(dy*(Ny-1.)),
                  np.float32(0.),np.float32(dz*(Nz-1.)),
-                 np.float32(lam),
-                 np.float32(n0),
+                 np.float32(1.*lam/n0),
                  alpha_g.data, np.int32(len(alphas)))
 
     u = u_g.get()
@@ -106,56 +113,43 @@ def focus_field_debye(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     ey = ey_g.get()
     ez = ez_g.get()
 
-    print "time in secs:" , time.time()-t
-    
     u_all = np.empty((Nz0,Ny0,Nx0),np.float32)
     ex_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
     ey_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
     ez_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
-
-    # sx = [slice(0,Nx),slice(Nx0-Nx0/2,Nx0)]
-    # sy = [slice(0,Ny),slice(Ny0-Ny0/2,Ny0)]
-    # sz = [slice(0,Nz),slice(Nz0-Nz0/2,Nz0)]
-
-    sx = [slice(0,Nx),slice(Nx0-Nx,Nx0)]
-    sy = [slice(0,Ny),slice(Ny0-Ny,Ny0)]
-    sz = [slice(0,Nz),slice(Nz0-Nz,Nz0)]
 
     sx = [slice(0,Nx),slice(Nx,Nx0)]
     sy = [slice(0,Ny),slice(Ny,Ny0)]
     sz = [slice(0,Nz),slice(Nz,Nz0)]
 
 
-    #FIXME: the loop below does not yet work for odd inputs
-    assert Nx0%2+Ny0%2+Nz0%2==0
 
     # spreading the calculated octant to the full volume
     for i,j,k in itertools.product([0,1],[0,1],[0,1]):
         #u_all[sz[1-i],sy[1-j],sx[1-k]] = u[::(-1)**i,::(-1)**j,::(-1)**k]
         u_all[sz[1-i],sy[1-j],sx[1-k]] = u[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k]
 
-        if i ==1:
+        # i, j, k = 0 indicates the + octant
+
+        u_all[sz[1-i],sy[1-j],sx[1-k]] = u[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k]
+        if i ==0:
             ex_all[sz[1-i],sy[1-j],sx[1-k]] = ex[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k]
             ey_all[sz[1-i],sy[1-j],sx[1-k]] = ey[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k]
             ez_all[sz[1-i],sy[1-j],sx[1-k]] = ez[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k]
-            # ex_all[sz[1-i],sy[1-j],sx[1-k]] = ex[::(-1)**i,::(-1)**j,::(-1)**k]
-            # ey_all[sz[1-i],sy[1-j],sx[1-k]] = ey[::(-1)**i,::(-1)**j,::(-1)**k]
-            # ez_all[sz[1-i],sy[1-j],sx[1-k]] = ez[::(-1)**i,::(-1)**j,::(-1)**k]
 
         else:
             ex_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ex[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k])
             ey_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ey[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k])
             ez_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ez[1-i:Nz-1+i,1-j :Ny-1+j,1-k :Nx-1+k][::(-1)**i,::(-1)**j,::(-1)**k])
 
-            # ex_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ex[::(-1)**i,::(-1)**j,::(-1)**k])
-            # ey_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ey[::(-1)**i,::(-1)**j,::(-1)**k])
-            # ez_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ez[::(-1)**i,::(-1)**j,::(-1)**k])
-
 
     return u_all, ex_all, ey_all, ez_all
 
 
-def focus_field_debye_plane(shape,units,z = 0., lam = .5, NA = .6, n0 = 1.,
+def focus_field_debye_plane(shape = (128,128),
+                            units = (.1,.1),
+                            z = 0.,
+                            lam = .5, NA = .6, n0 = 1.,
                             ex_g = None,
                             n_integration_steps = 200):
     """
@@ -178,7 +172,10 @@ def focus_field_debye_plane(shape,units,z = 0., lam = .5, NA = .6, n0 = 1.,
     """
 
 
-    p = OCLProgram(absPath("kernels/psf_debye.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+    #p = OCLProgram(absPath("kernels/psf_debye.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+
+    p = OCLProgram(absPath("kernels/psf_debye.cl"),
+            build_options = ["-I",absPath("kernels"),"-D","INT_STEPS=%s"%n_integration_steps])
 
     if np.isscalar(NA):
         NA = [0.,NA]
@@ -195,7 +192,7 @@ def focus_field_debye_plane(shape,units,z = 0., lam = .5, NA = .6, n0 = 1.,
     else:
         use_buffer = True
 
-    assert ex_g.shape == shape
+    assert ex_g.shape[::-1] == shape
 
     alpha_g = OCLArray.from_array(alphas.astype(np.float32))
 
@@ -207,8 +204,7 @@ def focus_field_debye_plane(shape,units,z = 0., lam = .5, NA = .6, n0 = 1.,
                  np.float32(-(Nx/2)*dx),np.float32((Nx-Nx/2)*dx),
                  np.float32(-(Ny/2)*dy),np.float32((Ny-Ny/2)*dy),
                  np.float32(z),
-                 np.float32(lam),
-                 np.float32(n0),
+                 np.float32(lam/n0),
                  alpha_g.data, np.int32(len(alphas)))
 
     print "time in secs:" , time.time()-t
@@ -240,7 +236,10 @@ def focus_field_debye3(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     """
 
     print absPath("kernels/psf_debye.cl")
-    p = OCLProgram(absPath("kernels/psf_debye.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+
+    #p = OCLProgram(absPath("kernels/psf_debye.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+    p = OCLProgram(absPath("kernels/psf_debye.cl"),
+            build_options = ["-I",absPath("kernels"),"-D","INT_STEPS=%s"%n_integration_steps])
 
     if np.isscalar(NA):
         NA = [0.,NA]
@@ -271,8 +270,7 @@ def focus_field_debye3(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
                  np.float32(0.5*dx),np.float32(dx*.5*(Nx0-1)),
                  np.float32(0.5*dy),np.float32(dy*.5*(Ny0-1)),
                  np.float32(0.5*dz),np.float32(dz*.5*(Nz0-1)),
-                 np.float32(lam),
-                 np.float32(n0),
+                 np.float32(lam/n0),
                  alpha_g.data, np.int32(len(alphas)))
 
     u = u_g.get()
@@ -298,15 +296,6 @@ def focus_field_debye3(shape,units,lam, NA, n0 = 1., n_integration_steps = 200):
     # spreading the calculated octant to the full volume
     for i,j,k in itertools.product([0,1],[0,1],[0,1]):
         u_all[sz[1-i],sy[1-j],sx[1-k]] = u[::(-1)**i,::(-1)**j,::(-1)**k]
-        # if i ==1:
-        #     ex_all[sz[1-i],sy[1-j],sx[1-k]] = ex[::(-1)**i,::(-1)**j,::(-1)**k]
-        #     ey_all[sz[1-i],sy[1-j],sx[1-k]] = ey[::(-1)**i,::(-1)**j,::(-1)**k]
-        #     ez_all[sz[1-i],sy[1-j],sx[1-k]] = ez[::(-1)**i,::(-1)**j,::(-1)**k]
-        # else:
-        #     print "conjugate!"
-        #     ex_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ex[::(-1)**i,::(-1)**j,::(-1)**k])
-        #     ey_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ey[::(-1)**i,::(-1)**j,::(-1)**k])
-        #     ez_all[sz[1-i],sy[1-j],sx[1-k]] = np.conjugate(ez[::(-1)**i,::(-1)**j,::(-1)**k])
         if i ==1:
             ex_all[sz[1-i],sy[1-j],sx[1-k]] = ex[::(-1)**i,::(-1)**j,::(-1)**k]
             ey_all[sz[1-i],sy[1-j],sx[1-k]] = ey[::(-1)**i,::(-1)**j,::(-1)**k]
@@ -358,8 +347,7 @@ def focus_field_debye_at(x,y,z,lam, NA, n0 = 1., n_integration_steps = 200):
                  x_g.data,y_g.data,z_g.data,
                  ex_g.data,ey_g.data,ez_g.data, u_g.data,
                  np.float32(1.),np.float32(0.),
-                 np.float32(lam),
-                 np.float32(n0),
+                 np.float32(lam/n0),
                  alpha_g.data, np.int32(len(alphas)))
 
     u = u_g.get().reshape(dshape)
@@ -388,7 +376,9 @@ def focus_field_debye_gauss(shape,units,lam,NAs, sig = 1./np.sqrt(2), n_integrat
     NAs = [.1,.2,.5,.6] lets light through the annulus .1<.2 and .5<.6
     """
 
-    p = OCLProgram(absPath("kernels/psf_debye.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+    #p = OCLProgram(absPath("kernels/psf_debye.cl"),build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
+    p = OCLProgram(absPath("kernels/psf_debye.cl"),
+            build_options = ["-I",absPath("kernels"),"-D","INT_STEPS=%s"%n_integration_steps])
 
 
     assert (sig>0)
@@ -452,190 +442,6 @@ def focus_field_debye_gauss(shape,units,lam,NAs, sig = 1./np.sqrt(2), n_integrat
 
 
 
-#
-# def focus_field_debye_new(shape, units, lam, NA, n0 = 1., n_integration_steps = 200):
-#     """NAs is an increasing list of NAs
-#     NAs = [.1,.2,.5,.6] lets light through the annulus .1<.2 and .5<.6
-#     """
-#
-#     p = OCLProgram(absPath("kernels/psf_debye.cl"),
-#                    build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
-#
-#
-#     Nx, Ny, Nz = shape
-#     dx, dy, dz = units
-#
-#     if np.isscalar(NA):
-#         NA = [0.,NA]
-#
-#     print dx,dy,dz
-#     alphas = np.arcsin(np.array(NA))
-#
-#     print alphas
-#     Nrad = max(Nx/2,Ny/2)
-#
-#     Rmax = .5*np.sqrt(dx**2*Nx**2+Ny**2*dy**2)
-#     Zmax = .5*dz*Nz
-#
-#     # the values of I_0, I_1... as a function of r and z
-#     I_vals_re = OCLImage.empty((Nrad,Nz/2),np.dtype(np.float32),num_channels = 4)
-#     I_vals_im = OCLImage.empty((Nrad,Nz/2),np.dtype(np.float32),num_channels = 4)
-#
-#     u_g = OCLArray.empty((Nz,Ny,Nx),np.float32)
-#     ex_g = OCLArray.empty(u_g.shape,np.complex64)
-#     ey_g = OCLArray.empty(u_g.shape,np.complex64)
-#     ez_g = OCLArray.empty(u_g.shape,np.complex64)
-#
-#     alpha_g = OCLArray.from_array(alphas.astype(np.float32))
-#
-#     t = time.time()
-#
-#
-#     p.run_kernel("precalculate_I",I_vals_im.shape,None,
-#                  I_vals_re,
-#                  I_vals_im,
-#                  np.float32(lam),
-#                  np.float32(n0),
-#                  np.float32(Rmax),
-#                  np.float32(Zmax),
-#                  alpha_g.data,
-#                  np.int32(len(alphas)))
-#
-#     # return I_vals_re.get(),I_vals_im.get(),1,1
-#
-#     p.run_kernel("assemble_I",u_g.shape[::-1],None,
-#                  I_vals_re,I_vals_im,
-#                  ex_g.data,ey_g.data,ez_g.data, u_g.data,
-#                  np.float32(1.),np.float32(0.),
-#                  np.float32(Rmax),
-#                  np.float32(Zmax),
-#                  np.float32(-dx*(Nx-1)/2.),np.float32(dx*(Nx-1)/2.),
-#                  np.float32(-dy*(Ny-1)/2.),np.float32(dy*(Ny-1)/2.),
-#                  np.float32(-dz*(Nz-1)/2.),np.float32(dz*(Nz-1)/2.))
-#
-#
-#     return u_g.get(), ex_g.get(), ey_g.get(), ez_g.get()
-
-# def psf_debye_mask(shape,units,lam, n_integration_steps = 200):
-#
-#     p = OCLProgram(absPath("psf_debye_fullmask.cl"),
-#                    build_options = str("-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps)))
-#
-#
-#     Nx, Ny, Nz = shape
-#     dx, dy, dz = units
-#
-#     Nrad = max(Nx/2,Ny/2)
-#
-#     Rmax = .5*np.sqrt(dx**2*Nx**2+Ny**2*dy**2)
-#     Zmax = .5*dz*Nz
-#
-#     # the values of I_0, I_1... as a function of r and z
-#     I_vals_re = OCLImage.empty((Nrad,Nz/2),np.dtype(np.float32),num_channels = 4)
-#     I_vals_im = OCLImage.empty((Nrad,Nz/2),np.dtype(np.float32),num_channels = 4)
-#
-#     u_g = OCLArray.empty((Nz,Ny,Nx),np.float32)
-#     ex_g = OCLArray.empty(u_g.shape,np.complex64)
-#     ey_g = OCLArray.empty(u_g.shape,np.complex64)
-#     ez_g = OCLArray.empty(u_g.shape,np.complex64)
-#
-#     t = time.time()
-#
-#
-#     p.run_kernel("precalculate_I",I_vals_im.shape,None,
-#                  I_vals_re,
-#                  I_vals_im,
-#                  np.float32(lam),
-#                  np.float32(Rmax),
-#                  np.float32(Zmax))
-#
-#     # return I_vals_re.get(),I_vals_im.get(),1,1
-#
-#     p.run_kernel("assemble_I",u_g.shape[::-1],None,
-#                  I_vals_re,I_vals_im,
-#                  ex_g.data,ey_g.data,ez_g.data, u_g.data,
-#                  np.float32(1.),np.float32(0.),
-#                  np.float32(Rmax),
-#                  np.float32(Zmax),
-#                  np.float32(-dx*(Nx-1)/2.),np.float32(dx*(Nx-1)/2.),
-#                  np.float32(-dy*(Ny-1)/2.),np.float32(dy*(Ny-1)/2.),
-#                  np.float32(-dz*(Nz-1)/2.),np.float32(dz*(Nz-1)/2.))
-#
-#     return u_g.get(), ex_g.get(), ey_g.get(), ez_g.get()
-#
-# def psf_debye_slit(shape,units,lam,NAs, slit_xs, slit_sigmas,
-#                    n_integration_steps = 100):
-#     """NAs is an increasing list of NAs
-#     NAs = [.1,.2,.5,.6] lets light through the annulus .1<.2 and .5<.6
-#
-#     slit_x are the x coordinates pf the slits
-#     """
-#
-#     p = OCLProgram(absPath("psf_debye.cl"),
-#                    build_options = "-I %s -D INT_STEPS=%s"%(absPath("."),n_integration_steps))
-#
-#
-#     Nx0, Ny0, Nz0 = shape
-#     dx, dy, dz = units
-#
-#     alphas = np.arcsin(np.array(NAs))
-#
-#     Nx = (Nx0+1)/2
-#     Ny = (Ny0+1)/2
-#     Nz = (Nz0+1)/2
-#
-#     u_g = OCLArray.empty((Nz,Ny,Nx),np.float32)
-#     ex_g = OCLArray.empty(u_g.shape,np.complex64)
-#     ey_g = OCLArray.empty(u_g.shape,np.complex64)
-#     ez_g = OCLArray.empty(u_g.shape,np.complex64)
-#
-#     alpha_g = OCLArray.from_array(alphas.astype(np.float32))
-#
-#     slit_xs_g = OCLArray.from_array(np.array(slit_xs).astype(np.float32))
-#     slit_sigmas_g = OCLArray.from_array(np.array(slit_sigmas).astype(np.float32))
-#
-#     t = time.time()
-#
-#     p.run_kernel("debye_wolf_slit",u_g.shape[::-1],None,
-#                  ex_g.data,ey_g.data,ez_g.data, u_g.data,
-#                  np.float32(1.),np.float32(0.),
-#                  np.float32(0),np.float32(dx*Nx),
-#                  np.float32(0),np.float32(dy*Ny),
-#                  np.float32(0),np.float32(dz*Nz),
-#                  np.float32(lam),
-#                  alpha_g.data, np.int32(len(alphas)),
-#                  slit_xs_g.data, slit_sigmas_g.data, np.int32(len(slit_xs)))
-#
-#     u = u_g.get()
-#     ex = ex_g.get()
-#     ey = ey_g.get()
-#     ez = ez_g.get()
-#
-#     print "time in secs:" , time.time()-t
-#
-#     u_all = np.empty((Nz0,Ny0,Nx0),np.float32)
-#     ex_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
-#     ey_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
-#     ez_all = np.empty((Nz0,Ny0,Nx0),np.complex64)
-#
-#     sx = [slice(0,Nx),slice(Nx0-Nx0/2,Nx0)]
-#     sy = [slice(0,Ny),slice(Ny0-Ny0/2,Ny0)]
-#     sz = [slice(0,Nz),slice(Nz0-Nz0/2,Nz0)]
-#
-#     sx = [slice(0,Nx),slice(Nx0-Nx,Nx0)]
-#     sy = [slice(0,Ny),slice(Ny0-Ny,Ny0)]
-#     sz = [slice(0,Nz),slice(Nz0-Nz,Nz0)]
-#
-#     for i,j,k in itertools.product([0,1],[0,1],[0,1]):
-#         u_all[sz[1-i],sy[1-j],sx[1-k]] = u[::(-1)**i,::(-1)**j,::(-1)**k]
-#         ex_all[sz[1-i],sy[1-j],sx[1-k]] = ex[::(-1)**i,::(-1)**j,::(-1)**k]
-#         ey_all[sz[1-i],sy[1-j],sx[1-k]] = ey[::(-1)**i,::(-1)**j,::(-1)**k]
-#         ez_all[sz[1-i],sy[1-j],sx[1-k]] = ez[::(-1)**i,::(-1)**j,::(-1)**k]
-#
-#
-#     return u_all, ex_all, ey_all, ez_all
-
-
 
     
 def test_debye():
@@ -658,6 +464,8 @@ def test_debye():
 
 if __name__ == '__main__':
 
-    ex = focus_field_debye_plane((128,)*2,(.05,)*2, z = 0, NA = .8, n0 = 1.)
+    ex_p = focus_field_debye_plane((128,)*2,(.1,)*2,
+                                   z = -6.4, NA = .3, n0 = 1.)
 
-    # u, ex,ey,ez = focus_field_debye((256,)*3,(0.01,)*3,lam=.5, NA = .4)
+    u1, ex, ey, ez = focus_field_debye((128,)*3,(0.1,)*3,lam=.5, NA = .4)
+

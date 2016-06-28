@@ -14,7 +14,7 @@ Journal of Modern Optics, 2011, 58, 5-6, 339
 
 
 #include <pyopencl-complex.h>
-#include <kernels/bessel.cl>
+#include <bessel.cl>
 
 
 #ifndef INT_STEPS
@@ -31,7 +31,6 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
 						 const float y1,const float y2,
 						 const float z1,const float z2,
 						 const float lam,
-						 const float n0,
 						 __constant float* alphas, const int Nalphas){
 
   int i = get_global_id(0);
@@ -47,9 +46,9 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
   float z = z1+k*(z2-z1)/(Nz-1.f);
 
 
-  float kr = 2.f*M_PI/lam*sqrt(x*x+y*y)*n0;
-  float kz = 2.f*M_PI/lam*z*n0;
-  //float kz = 2.f*M_PI/lam*z/n0;
+  float kr = 2.f*M_PI/lam*sqrt(x*x+y*y);
+  float kz = 2.f*M_PI/lam*z;
+
   
   float phi = atan2(y,x); 
   
@@ -73,9 +72,10 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
 	  float si = sin(t);
 	  cfloat_t phase = cfloat_new(cos(kz*co),sin(kz*co));
 
-	  float prefac = ((t==alpha1)||(t==alpha2))?.5f:1.f;
+	  float prefac = ((i_t==0)||(i_t==INT_STEPS))?.5f:1.f;
 
-	  prefac *= dt*sqrt(co)*si;
+	  //prefac *= dt*sqrt(co)*si;
+	  prefac *= dt*sqrt(co);
 	
 	  I0 = cfloat_add(I0,cfloat_rmul(prefac*(co+1.f)*bessel_jn(0,kr*si),phase));
 	  I1 = cfloat_add(I1,cfloat_rmul(prefac*si*bessel_jn(1,kr*si),phase));
@@ -84,10 +84,6 @@ __kernel void debye_wolf(__global cfloat_t * Ex,
 
 	}
   }
-
-  //cfloat_t ex = Ex0*(I0+I2*cos(2.f*phi))+Ey0*I2*sin(2.f*phi);
-  //cfloat_t ey = Ey0*(I0-I2*cos(2.f*phi))+Ex0*I2*sin(2.f*phi);
-  //cfloat_t ez = cfloat_mul(cfloat_new(0.f,-2.f),I1)*(Ex0*cos(phi)+Ey0*sin(phi));
 
   cfloat_t ex = cfloat_add(cfloat_rmul(Ex0,cfloat_add(I0,
                            cfloat_mulr(I2,cos(2.f*phi)))),
@@ -125,7 +121,6 @@ __kernel void debye_wolf_plane(__global cfloat_t * Ex,
 						 const float y1,const float y2,
 						 const float z,
 						 const float lam,
-						 const float n0,
 						 __constant float* alphas, const int Nalphas){
 
   int i = get_global_id(0);
@@ -141,9 +136,9 @@ __kernel void debye_wolf_plane(__global cfloat_t * Ex,
 
 
 
-  float kr = 2.f*M_PI/lam*sqrt(x*x+y*y)*n0;
-  float kz = 2.f*M_PI/lam*z*n0;
-  //float kz = 2.f*M_PI/lam*z/n0;
+  float kr = 2.f*M_PI/lam*sqrt(x*x+y*y);
+  float kz = 2.f*M_PI/lam*z;
+
 
   float phi = atan2(y,x);
 
@@ -199,9 +194,7 @@ __kernel void debye_wolf_at(
 						 __global float * I,
 						    const float Ex0,
 						 const float Ey0,
-
 						 const float lam,
-						 const float n0,
 						 __constant float* alphas, const int Nalphas){
 
   int i = get_global_id(0);
@@ -209,9 +202,9 @@ __kernel void debye_wolf_at(
   float y = y_coords[i];
   float z = z_coords[i];
 
-  float kr = 2.f*M_PI/lam*sqrt(x*x+y*y)*n0;
-  float kz = 2.f*M_PI/lam*z*n0;
-  //float kz = 2.f*M_PI/lam*z/n0;
+  float kr = 2.f*M_PI/lam*sqrt(x*x+y*y);
+  float kz = 2.f*M_PI/lam*z;
+
 
   float phi = atan2(y,x);
 
